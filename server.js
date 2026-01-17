@@ -23,7 +23,7 @@ const { calculateXP, calculateCoins, checkBadges } = require('./utils/gamificati
 const { getAIFeedback, getHint, recommendProblems } = require('./services/aiTutor');
 
 // Routes
-const { router: authRouter, authenticateToken } = require('./routes/auth');
+const authRoutes = require('./routes/auth');
 const apiRouter = require('./routes/api');
 const aiTutorRouter = require('./routes/aiTutor');
 
@@ -52,6 +52,7 @@ app.use('/api/', limiter);
 
 // Routes
 app.use('/api/auth', authRouter);
+app.use('/api/auth', authRoutes);
 app.use('/api', apiRouter);
 app.use('/api/ai-tutor', aiTutorRouter);
 
