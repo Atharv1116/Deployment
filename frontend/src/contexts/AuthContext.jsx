@@ -11,6 +11,9 @@ export const useAuth = () => {
   return context;
 };
 
+// ✅ ADD BASE API URL (FIX)
+const API_URL = import.meta.env.VITE_API_URL;
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,7 +29,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUser = async () => {
     try {
-      const response = await axios.get('/api/auth/me', {
+      const response = await axios.get(`${API_URL}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(response.data);
@@ -40,32 +43,43 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post('/api/auth/login', { email, password });
+      const response = await axios.post(
+        `${API_URL}/api/auth/login`,
+        { email, password }
+      );
+
       const { token: newToken, user: userData } = response.data;
       localStorage.setItem('token', newToken);
       setToken(newToken);
       setUser(userData);
+
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data?.error || 'Login failed' };
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Login failed'
+      };
     }
   };
 
   const register = async (username, email, password, college) => {
     try {
-      const response = await axios.post('/api/auth/register', {
-        username,
-        email,
-        password,
-        college
-      });
+      const response = await axios.post(
+        `${API_URL}/api/auth/register`,
+        { username, email, password, college }
+      );
+
       const { token: newToken, user: userData } = response.data;
       localStorage.setItem('token', newToken);
       setToken(newToken);
       setUser(userData);
+
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data?.error || 'Registration failed' };
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Registration failed'
+      };
     }
   };
 
@@ -85,5 +99,9 @@ export const AuthProvider = ({ children }) => {
     fetchUser
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
