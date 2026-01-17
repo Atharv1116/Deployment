@@ -51,7 +51,7 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // Routes
-app.use('/api/auth', authRouter);
+
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRouter);
 app.use('/api/ai-tutor', aiTutorRouter);
