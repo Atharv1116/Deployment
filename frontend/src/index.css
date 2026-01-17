@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Poppins", sans-serif;
+  background-color: #0e0e0e;
+  color: #f5f5f5;
+  overflow-x: hidden;
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent;
+  }
+
+  /* Enhanced glassmorphism with improved backdrop blur */
+  .glass {
+    @apply bg-dark-800/50 backdrop-blur-md border border-dark-700/60;
+  }
+
+  .glass-dark {
+    @apply bg-dark-900/60 backdrop-blur-md border border-dark-700/40;
+  }
+
+  .glow {
+    box-shadow: 0 0 20px rgba(0, 255, 195, 0.3);
+  }
+
+  .glow-md {
+    box-shadow: 0 0 30px rgba(0, 255, 195, 0.25);
+  }
+
+.matchmaking-spinner {
+  position: relative;
+  width: 4rem;
+  height: 4rem;
+}
+
+.matchmaking-spinner__track,
+.matchmaking-spinner__indicator {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+}
+
+.matchmaking-spinner__track {
+  border: 4px solid rgba(0, 255, 195, 0.25);
+}
+
+.matchmaking-spinner__indicator {
+  border: 4px solid transparent;
+  border-top-color: #00ffc3;
+  border-right-color: rgba(0, 255, 195, 0.4);
+  animation: cq-spin 0.9s linear infinite;
+}
+
+.ai-thinking-dots {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ai-thinking-dots span {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: rgba(0, 255, 195, 0.8);
+  animation: cq-pulse 1.2s ease-in-out infinite;
+  display: inline-block;
+}
+
+.ai-thinking-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+  background-color: rgba(0, 255, 195, 0.6);
+}
+
+.ai-thinking-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+  background-color: rgba(0, 255, 195, 0.4);
+}
+
+@keyframes cq-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cq-pulse {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-dark-900;
+  }
+}
+
+/* Smooth scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #00ffc3;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00cfa1;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Selection styling */
+::selection {
+  background-color: #00ffc3;
+  color: #0e0e0e;
+}
