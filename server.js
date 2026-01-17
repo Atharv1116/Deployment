@@ -9,6 +9,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
+const authenticateToken = require('./middleware/authenticateToken');
+
 
 // Database & Models
 const connectDB = require('./config/database');
