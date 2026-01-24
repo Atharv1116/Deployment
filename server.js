@@ -34,7 +34,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'https://deployment-iota-jet.vercel.app',
+    origin: process.env.FRONTEND_URL || 'https://deployment-3yen98p15-atharvanikhade94-7076s-projects.vercel.app/',
     methods: ['GET', 'POST']
   }
 });
@@ -42,7 +42,7 @@ const io = new Server(server, {
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://deployment-iota-jet.vercel.app',
+  origin: process.env.FRONTEND_URL || 'https://deployment-3yen98p15-atharvanikhade94-7076s-projects.vercel.app/',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
