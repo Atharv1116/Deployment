@@ -2,14 +2,13 @@
 // server.js - Enhanced CodeQuest Server
 require('dotenv').config();
 const express = require('express');
-const app = express();
-app.set('trust proxy', 1);
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const cors = require('cors');
+const app = express();
+app.set('trust proxy', 1);
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const authenticateToken = require('./middleware/authenticateToken');
 
@@ -54,17 +53,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  trustProxy: true // limit each IP to 100 requests per windowMs
-});
-app.use('/api/auth', limiter);
+
 
 // Routes
 
