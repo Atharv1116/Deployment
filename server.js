@@ -10,7 +10,7 @@ const app = express();
 app.set('trust proxy', 1);
 const helmet = require('helmet');
 const mongoose = require('mongoose');
-const authenticateToken = require('../middleware/authenticateToken');
+const authenticateToken = require('./middleware/authenticateToken');
 
 
 // Database & Models
@@ -55,9 +55,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Rate limiting
-
 
 // Routes
 
