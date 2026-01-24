@@ -10,7 +10,7 @@ const app = express();
 app.set('trust proxy', 1);
 const helmet = require('helmet');
 const mongoose = require('mongoose');
-const authenticateToken = require('./middleware/authenticateToken');
+const authenticateToken = require('../middleware/authenticateToken');
 
 
 // Database & Models
