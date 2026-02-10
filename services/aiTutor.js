@@ -77,7 +77,8 @@ When giving advice, tie it back to the student's goals, strengths, and weaknesse
       response: error.response?.data,
       status: error.response?.status
     });
-    throw new Error('AI Tutor service is temporarily unavailable.');
+    const errorMessage = error.response?.data?.error?.message || error.message;
+    throw new Error(`OpenAI Error: ${errorMessage}`);
   }
 }
 
