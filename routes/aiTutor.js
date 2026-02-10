@@ -44,7 +44,7 @@ router.post('/chat', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('AI Tutor Chat Error:', error.message);
     res.status(500).json({
-      error: 'AI Tutor failed. Please try again in a moment.'
+      error: `AI Tutor failed: ${error.message}`
     });
   }
 });
