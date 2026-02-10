@@ -34,7 +34,7 @@ function loadSecretsFromFile() {
 }
 
 function getAITutorKey() {
-  const envKey = process.env.AI_TUTOR_API_KEY || process.env.OPENAI_API_KEY;
+  const envKey = process.env.OPENAI_API_KEY;
   if (envKey) {
     return envKey.trim();
   }
