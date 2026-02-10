@@ -2,22 +2,18 @@ const OpenAI = require('openai');
 const { getAITutorKey } = require('../config/secrets');
 
 const DEFAULT_MODEL = process.env.AI_TUTOR_MODEL || 'gpt-4o-mini';
-let cachedOpenAI;
 
 function getOpenAIClient() {
-  if (cachedOpenAI) {
-    return cachedOpenAI;
-  }
-
   const apiKey = getAITutorKey();
   if (!apiKey) {
     throw new Error('AI Tutor API key is missing. Add it to API key.txt or set AI_TUTOR_API_KEY.');
   }
 
-  // Cache the key in process.env so any downstream libraries can reuse it.
+  // Set the key in process.env for downstream libraries if needed
   process.env.OPENAI_API_KEY = apiKey;
-  cachedOpenAI = new OpenAI({ apiKey });
-  return cachedOpenAI;
+
+  // Always create a fresh client to ensure we use the latest key
+  return new OpenAI({ apiKey });
 }
 
 function sanitizeMessages(messages = []) {
