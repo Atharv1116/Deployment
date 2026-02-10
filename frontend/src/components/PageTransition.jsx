@@ -15,9 +15,13 @@ const variants = {
 const PageTransition = ({ children, className = '' }) => {
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  if (prefersReducedMotion) {
-    return <div className={className}>{children}</div>;
-  }
+  const finalVariants = prefersReducedMotion
+    ? {
+      initial: { opacity: 1 },
+      animate: { opacity: 1 },
+      exit: { opacity: 1 }
+    }
+    : variants;
 
   return (
     <motion.div
@@ -25,8 +29,8 @@ const PageTransition = ({ children, className = '' }) => {
       initial="initial"
       animate="animate"
       exit="exit"
-      variants={variants}
-      transition={transition}
+      variants={finalVariants}
+      transition={prefersReducedMotion ? { duration: 0 } : transition}
     >
       {children}
     </motion.div>

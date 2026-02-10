@@ -24,7 +24,7 @@ function App() {
       <SocketProvider>
         <div className="min-h-screen bg-dark-900 flex flex-col">
           <Navbar />
-          <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence initial={false}>
             <Routes location={location} key={location.pathname}>
               <Route
                 path="/"
