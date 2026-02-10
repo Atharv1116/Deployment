@@ -8,6 +8,8 @@ import { Trophy, TrendingUp, Target, Award, Zap } from "lucide-react"
 import { Tooltip, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer } from "recharts"
 import { staggerContainerVariants, staggerItemVariants } from "../utils/animations"
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const SkeletonBlock = ({ className }) => <div className={`animate-pulse rounded-2xl bg-dark-800/60 ${className}`} />
 
 const StatCard = ({ icon: Icon, label, value, delay = 0 }) => (
@@ -47,7 +49,7 @@ const Dashboard = () => {
   const fetchStats = async () => {
     try {
       const userId = user.id || user._id
-      const response = await axios.get(`/api/user/${userId}/stats`, {
+      const response = await axios.get(`${API_URL}/api/user/${userId}/stats`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       setStats(response.data)
@@ -61,7 +63,7 @@ const Dashboard = () => {
   const fetchMatchHistory = async () => {
     try {
       const userId = user.id || user._id
-      const response = await axios.get(`/api/user/${userId}/matches`, {
+      const response = await axios.get(`${API_URL}/api/user/${userId}/matches`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = response.data;

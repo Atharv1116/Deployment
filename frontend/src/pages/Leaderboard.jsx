@@ -6,6 +6,8 @@ import { motion } from "framer-motion"
 import { Trophy, Medal, Award, TrendingUp } from "lucide-react"
 import { staggerContainerVariants, staggerItemVariants } from "../utils/animations"
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const PlaceholderRow = () => (
   <div className="animate-pulse p-4 rounded-lg bg-dark-800/60 flex justify-between items-center">
     <div className="h-6 bg-dark-600 rounded w-32" />
@@ -26,7 +28,7 @@ const Leaderboard = () => {
   const fetchLeaderboard = async () => {
     setLoading(true)
     try {
-      const response = await axios.get("/api/leaderboard", {
+      const response = await axios.get(`${API_URL}/api/leaderboard`, {
         params: { type, college },
       })
       const data = response.data;
@@ -75,8 +77,8 @@ const Leaderboard = () => {
             <button
               onClick={() => setType("global")}
               className={`px-6 py-3 rounded-xl font-semibold transition ${type === "global"
-                  ? "bg-primary text-dark-900 shadow-lg shadow-primary/30"
-                  : "bg-dark-700 text-gray-300 hover:bg-dark-600"
+                ? "bg-primary text-dark-900 shadow-lg shadow-primary/30"
+                : "bg-dark-700 text-gray-300 hover:bg-dark-600"
                 }`}
             >
               Global
@@ -84,8 +86,8 @@ const Leaderboard = () => {
             <button
               onClick={() => setType("college")}
               className={`px-6 py-3 rounded-xl font-semibold transition ${type === "college"
-                  ? "bg-primary text-dark-900 shadow-lg shadow-primary/30"
-                  : "bg-dark-700 text-gray-300 hover:bg-dark-600"
+                ? "bg-primary text-dark-900 shadow-lg shadow-primary/30"
+                : "bg-dark-700 text-gray-300 hover:bg-dark-600"
                 }`}
             >
               College
@@ -125,8 +127,8 @@ const Leaderboard = () => {
                   variants={staggerItemVariants}
                   whileHover={{ scale: 1.01, x: 4 }}
                   className={`p-4 rounded-xl flex items-center justify-between transition cursor-pointer ${idx < 3
-                      ? "bg-gradient-to-r from-primary/20 to-transparent border-2 border-primary/50"
-                      : "bg-dark-700 hover:bg-dark-600"
+                    ? "bg-gradient-to-r from-primary/20 to-transparent border-2 border-primary/50"
+                    : "bg-dark-700 hover:bg-dark-600"
                     }`}
                 >
                   <div className="flex items-center space-x-4 flex-1">

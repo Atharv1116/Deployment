@@ -15,6 +15,8 @@ const createMessage = (role, content, extras = {}) => ({
   ...extras,
 })
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const formatTimestamp = (dateString) => {
   if (!dateString) return ""
   return new Date(dateString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -62,7 +64,7 @@ const AITutor = () => {
     try {
       const payload = optimisticHistory.map(({ role, content }) => ({ role, content }))
       const response = await axios.post(
-        "/api/ai-tutor/chat",
+        `${API_URL}/api/ai-tutor/chat`,
         { userId, messages: payload },
         {
           headers: { Authorization: `Bearer ${token}` },
