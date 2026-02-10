@@ -29,7 +29,13 @@ const Leaderboard = () => {
       const response = await axios.get("/api/leaderboard", {
         params: { type, college },
       })
-      setLeaderboard(response.data)
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setLeaderboard(data);
+      } else {
+        console.warn("Leaderboard API returned non-array:", data);
+        setLeaderboard([]);
+      }
     } catch (error) {
       console.error("Failed to fetch leaderboard:", error)
     } finally {
@@ -68,21 +74,19 @@ const Leaderboard = () => {
           <div className="flex flex-wrap gap-4 justify-center items-center">
             <button
               onClick={() => setType("global")}
-              className={`px-6 py-3 rounded-xl font-semibold transition ${
-                type === "global"
+              className={`px-6 py-3 rounded-xl font-semibold transition ${type === "global"
                   ? "bg-primary text-dark-900 shadow-lg shadow-primary/30"
                   : "bg-dark-700 text-gray-300 hover:bg-dark-600"
-              }`}
+                }`}
             >
               Global
             </button>
             <button
               onClick={() => setType("college")}
-              className={`px-6 py-3 rounded-xl font-semibold transition ${
-                type === "college"
+              className={`px-6 py-3 rounded-xl font-semibold transition ${type === "college"
                   ? "bg-primary text-dark-900 shadow-lg shadow-primary/30"
                   : "bg-dark-700 text-gray-300 hover:bg-dark-600"
-              }`}
+                }`}
             >
               College
             </button>
@@ -120,11 +124,10 @@ const Leaderboard = () => {
                   key={player._id || idx}
                   variants={staggerItemVariants}
                   whileHover={{ scale: 1.01, x: 4 }}
-                  className={`p-4 rounded-xl flex items-center justify-between transition cursor-pointer ${
-                    idx < 3
+                  className={`p-4 rounded-xl flex items-center justify-between transition cursor-pointer ${idx < 3
                       ? "bg-gradient-to-r from-primary/20 to-transparent border-2 border-primary/50"
                       : "bg-dark-700 hover:bg-dark-600"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center space-x-4 flex-1">
                     <div className="w-12 text-center">{getRankIcon(idx + 1)}</div>

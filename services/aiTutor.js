@@ -34,20 +34,18 @@ async function chatWithTutor(messages, context = {}) {
   const { user, performance, matches } = context;
 
   const userSummary = user
-    ? `Student: ${user.username}\nRating: ${user.rating || 'N/A'} | Level: ${user.level || 'N/A'} | Streak: ${
-        user.streak || 0
-      }\nWeak Topics: ${performance?.weakTopics?.join(', ') || 'unknown'}`
+    ? `Student: ${user.username}\nRating: ${user.rating || 'N/A'} | Level: ${user.level || 'N/A'} | Streak: ${user.streak || 0
+    }\nWeak Topics: ${performance?.weakTopics?.join(', ') || 'unknown'}`
     : 'Student: Unknown';
 
   const matchSummary = matches && matches.length
     ? matches
-        .map(
-          (match, idx) =>
-            `#${idx + 1}: ${match.type || 'mode'} on "${match.question?.title || 'Unknown'}" (${
-              match.question?.difficulty || 'difficulty?'
-            })`
-        )
-        .join('\n')
+      .map(
+        (match, idx) =>
+          `#${idx + 1}: ${match.type || 'mode'} on "${match.question?.title || 'Unknown'}" (${match.question?.difficulty || 'difficulty?'
+          })`
+      )
+      .join('\n')
     : 'No recent matches recorded.';
 
   const systemPrompt = `You are CodeQuest AI Coach, a calm, encouraging tutor who helps competitive programmers improve.
@@ -74,7 +72,11 @@ When giving advice, tie it back to the student's goals, strengths, and weaknesse
 
     return response.choices?.[0]?.message?.content?.trim() || 'I could not craft a reply. Please try again.';
   } catch (error) {
-    console.error('AI Tutor chat error:', error.response?.data || error.message);
+    console.error('AI Tutor chat error details:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
     throw new Error('AI Tutor service is temporarily unavailable.');
   }
 }
@@ -137,13 +139,13 @@ async function recommendProblems(user, Question) {
   try {
     // Analyze weak topics
     const weakTopics = user.weakTopics || [];
-    
+
     // Get problems matching weak topics
     let recommended = await Question.find({
       tags: { $in: weakTopics },
       difficulty: { $in: ['easy', 'medium'] }
     }).limit(5);
-    
+
     // If not enough, get random medium difficulty problems
     if (recommended.length < 3) {
       const additional = await Question.find({
@@ -152,7 +154,7 @@ async function recommendProblems(user, Question) {
       }).limit(5 - recommended.length);
       recommended = [...recommended, ...additional];
     }
-    
+
     return recommended;
   } catch (error) {
     console.error('Recommendation error:', error);
@@ -167,19 +169,19 @@ async function analyzePerformance(user, matchHistory) {
       strongTopics: [],
       suggestions: []
     };
-    
+
     // Simple analysis based on failed attempts
     // In production, you'd analyze actual problem tags and success rates
-    
+
     if (user.skills.algorithms < 50) {
       analysis.weakTopics.push('algorithms');
       analysis.suggestions.push('Practice more algorithm problems to improve your problem-solving skills.');
     }
-    
+
     if (user.skills.speed < 50) {
       analysis.suggestions.push('Try solving problems under time pressure to improve your coding speed.');
     }
-    
+
     return analysis;
   } catch (error) {
     console.error('Performance analysis error:', error);

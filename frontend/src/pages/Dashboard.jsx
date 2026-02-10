@@ -64,7 +64,13 @@ const Dashboard = () => {
       const response = await axios.get(`/api/user/${userId}/matches`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      setMatchHistory(response.data)
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setMatchHistory(data);
+      } else {
+        console.warn("Match history API returned non-array:", data);
+        setMatchHistory([]);
+      }
     } catch (error) {
       console.error("Failed to fetch match history:", error)
     }
