@@ -35,7 +35,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin:['https://deployment-3yen98p15-atharvanikhade94-7076s-projects.vercel.app',
+    origin: ['https://deployment-3yen98p15-atharvanikhade94-7076s-projects.vercel.app',
       'https://deployment-iota-jet.vercel.app'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -46,8 +46,8 @@ const io = new Server(server, {
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin:['https://deployment-3yen98p15-atharvanikhade94-7076s-projects.vercel.app',
-      'https://deployment-iota-jet.vercel.app'],
+  origin: ['https://deployment-3yen98p15-atharvanikhade94-7076s-projects.vercel.app',
+    'https://deployment-iota-jet.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -109,23 +109,38 @@ const BATTLE_ROYALE_ELIMINATION_RATE = 0.3; // Eliminate 30% each round
 
 // Helper: Get random question
 async function getRandomQuestion(difficulty = null) {
-  const query = difficulty ? { difficulty } : {};
-  const q = await Question.aggregate([
-    { $match: query },
-    { $sample: { size: 1 } }
-  ]);
-  
-  if (!q || q.length === 0) {
+  try {
+    const query = difficulty ? { difficulty } : {};
+    const q = await Question.aggregate([
+      { $match: query },
+      { $sample: { size: 1 } }
+    ]);
+
+    if (!q || q.length === 0) {
+      console.warn(`⚠️ No questions found in database${difficulty ? ` for difficulty: ${difficulty}` : ''}. Using fallback question.`);
+      return {
+        title: 'Default Problem',
+        description: 'Solve this problem',
+        sampleInput: 'test',
+        sampleOutput: 'test',
+        difficulty: difficulty || 'easy',
+        _id: null
+      };
+    }
+
+    console.log(`✅ Question loaded: "${q[0].title}" (${q[0].difficulty})`);
+    return q[0];
+  } catch (error) {
+    console.error('❌ Error loading question from database:', error.message);
     return {
       title: 'Default Problem',
       description: 'Solve this problem',
       sampleInput: 'test',
       sampleOutput: 'test',
-      difficulty: 'easy',
+      difficulty: difficulty || 'easy',
       _id: null
     };
   }
-  return q[0];
 }
 
 // Helper: Update user socket mapping
@@ -247,7 +262,7 @@ io.on('connection', (socket) => {
 
       const question = await getRandomQuestion();
       roomQuestion.set(roomId, question);
-      
+
       const state = {
         type: '1v1',
         players: [player1.id, player2.id],
@@ -280,8 +295,8 @@ io.on('connection', (socket) => {
   // Players 3-4 → Team Red (complete when 4th joins, match starts)
   socket.on('join-2v2', async () => {
     // Prevent joining multiple queues
-    if (queue1v1.find(s => s.id === socket.id) || 
-        queueBattleRoyale.find(s => s.id === socket.id)) {
+    if (queue1v1.find(s => s.id === socket.id) ||
+      queueBattleRoyale.find(s => s.id === socket.id)) {
       socket.emit('queue-error', { message: 'Already in another queue' });
       return;
     }
@@ -309,8 +324,8 @@ io.on('connection', (socket) => {
         teamStatus = teamRedSize === 2 ? 'complete' : 'waiting';
       }
 
-      p.emit('queued', { 
-        mode: '2v2', 
+      p.emit('queued', {
+        mode: '2v2',
         queueSize,
         position,
         team,
@@ -333,7 +348,7 @@ io.on('connection', (socket) => {
 
       const question = await getRandomQuestion();
       roomQuestion.set(roomId, question);
-      
+
       const state = {
         type: '2v2',
         players: [...teamBlue, ...teamRed],
@@ -364,7 +379,7 @@ io.on('connection', (socket) => {
         const team = isBlue ? 'blue' : 'red';
         const teammates = isBlue ? teamBlue : teamRed;
         const opponents = isBlue ? teamRed : teamBlue;
-        
+
         p.emit('match-found', {
           roomId,
           type: '2v2',
@@ -395,7 +410,7 @@ io.on('connection', (socket) => {
 
       const question = await getRandomQuestion('medium');
       roomQuestion.set(roomId, question);
-      
+
       const state = {
         type: 'battle-royale',
         players: players.map(p => p.id),
@@ -466,7 +481,7 @@ io.on('connection', (socket) => {
     // Eliminate bottom players
     const eliminateCount = Math.max(1, Math.floor(players.length * BATTLE_ROYALE_ELIMINATION_RATE));
     const eliminated = players.slice(-eliminateCount).map(([id]) => id);
-    
+
     state.eliminated.push(...eliminated);
     state.round = round + 1;
 
@@ -487,7 +502,7 @@ io.on('connection', (socket) => {
       // Next round
       const nextQuestion = await getRandomQuestion('medium');
       roomQuestion.set(roomId, nextQuestion);
-      
+
       // Reset scores for next round
       state.scores.forEach((score, id) => {
         if (!state.eliminated.includes(id)) {
@@ -506,7 +521,7 @@ io.on('connection', (socket) => {
     if (!state) return;
 
     state.finished = true;
-    
+
     // Calculate final rankings
     const rankings = Array.from(state.scores.entries())
       .map(([socketId, score]) => ({
@@ -515,8 +530,8 @@ io.on('connection', (socket) => {
         solved: score.solved,
         time: score.time,
         attempts: score.attempts,
-        position: state.eliminated.indexOf(socketId) === -1 
-          ? (state.eliminated.length + 1) 
+        position: state.eliminated.indexOf(socketId) === -1
+          ? (state.eliminated.length + 1)
           : state.eliminated.indexOf(socketId) + 1
       }))
       .sort((a, b) => {
@@ -530,13 +545,13 @@ io.on('connection', (socket) => {
     // Update user stats and ELO
     for (const ranking of rankings) {
       if (!ranking.userId) continue;
-      
+
       const user = await User.findById(ranking.userId);
       if (!user) continue;
 
       const isWinner = ranking.userId === winnerUserId;
       const position = rankings.indexOf(ranking) + 1;
-      
+
       // Update stats
       if (isWinner) {
         user.wins += 1;
@@ -548,7 +563,7 @@ io.on('connection', (socket) => {
       // Calculate XP and coins
       const xp = calculateXP(isWinner ? 'win' : 'loss', 'medium', 'battle-royale');
       const coins = calculateCoins(isWinner ? 'win' : 'loss', 'medium', 'battle-royale', position);
-      
+
       user.xp += xp;
       user.coins += coins;
 
@@ -604,7 +619,7 @@ io.on('connection', (socket) => {
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
     socket.to(roomId).emit('user-joined', socket.id);
-    
+
     // Send question to player if they join after match-found was emitted
     const question = roomQuestion.get(roomId);
     if (question) {
@@ -620,7 +635,7 @@ io.on('connection', (socket) => {
   socket.on('send-message', async ({ roomId, message }) => {
     const userId = playerSessions.get(socket.id);
     let username = socket.id.substring(0, 8); // Default to socket ID
-    
+
     if (userId) {
       try {
         const user = await User.findById(userId);
@@ -629,12 +644,12 @@ io.on('connection', (socket) => {
         console.error('Error fetching user for chat:', err);
       }
     }
-    
+
     // Broadcast to entire room including sender
-    io.to(roomId).emit('receive-message', { 
-      user: username, 
+    io.to(roomId).emit('receive-message', {
+      user: username,
       socketId: socket.id,
-      message 
+      message
     });
   });
 
@@ -651,7 +666,7 @@ io.on('connection', (socket) => {
     // Use provided code or empty string
     const playerCode = code || '# No code submitted';
     const langId = language_id || 71; // Default to Python
-    
+
     try {
       const judgeRes = await submitToJudge0({
         source_code: playerCode,
@@ -705,13 +720,13 @@ io.on('connection', (socket) => {
 
     const leavingUserId = playerSessions.get(socket.id);
     const remainingPlayers = state.players.filter(id => id !== socket.id);
-    
+
     if (state.type === '1v1' && remainingPlayers.length === 1) {
       const winnerId = remainingPlayers[0];
-      const winnerUserId = state.playerIds.find((id, idx) => 
+      const winnerUserId = state.playerIds.find((id, idx) =>
         state.players[idx] === winnerId
       ) || playerSessions.get(winnerId);
-      
+
       state.finished = true;
       state.winner = winnerId;
       roomState.set(roomId, state);
@@ -887,7 +902,7 @@ io.on('connection', (socket) => {
 
       if (correct) {
         const submitTime = Date.now() - (state.startedAt?.getTime() || Date.now());
-        
+
         if (state.type === '1v1') {
           await handle1v1Win(roomId, socket.id, state, question, details, submitTime);
         } else if (state.type === '2v2') {
@@ -902,11 +917,11 @@ io.on('connection', (socket) => {
           const user = await User.findById(userId);
           if (user) {
             const errorMsg = judgeRes.stderr || judgeRes.compile_output || 'Wrong output';
-            const feedback = await getAIFeedback(code, question, errorMsg, 
+            const feedback = await getAIFeedback(code, question, errorMsg,
               state.scores?.get(socket.id)?.attempts || 0);
-            
+
             socket.emit('ai-feedback', { feedback });
-            
+
             // Update attempt count for battle royale
             if (state.type === 'battle-royale' && state.scores.has(socket.id)) {
               const score = state.scores.get(socket.id);
@@ -915,7 +930,7 @@ io.on('connection', (socket) => {
             }
           }
         }
-        
+
         socket.emit('evaluation-result', { ok: true, correct: false, details });
         io.to(roomId).emit('score-update', {
           user: socket.id,
@@ -1091,7 +1106,7 @@ io.on('connection', (socket) => {
     queue1v1 = queue1v1.filter(s => s.id !== socket.id);
     queue2v2 = queue2v2.filter(s => s.id !== socket.id);
     queueBattleRoyale = queueBattleRoyale.filter(s => s.id !== socket.id);
-    
+
     const userId = playerSessions.get(socket.id);
     playerSessions.delete(socket.id);
 
@@ -1099,7 +1114,7 @@ io.on('connection', (socket) => {
     for (const [roomId, state] of roomState.entries()) {
       if (state.players && state.players.includes(socket.id) && !state.finished) {
         const remainingPlayers = state.players.filter(id => id !== socket.id);
-        
+
         if (state.type === 'battle-royale') {
           // Eliminate disconnected player
           if (!state.eliminated.includes(socket.id)) {
@@ -1109,15 +1124,15 @@ io.on('connection', (socket) => {
         } else if (state.type === '1v1' && remainingPlayers.length === 1) {
           // 1v1: Remaining player wins
           const winnerId = remainingPlayers[0];
-          const winnerUserId = state.playerIds.find(id => 
-            playerSessions.get(winnerId) === id || 
+          const winnerUserId = state.playerIds.find(id =>
+            playerSessions.get(winnerId) === id ||
             state.players.indexOf(winnerId) === state.playerIds.indexOf(id)
           ) || playerSessions.get(winnerId);
-          
+
           state.finished = true;
           state.winner = winnerId;
           roomState.set(roomId, state);
-          
+
           // Update winner stats
           if (winnerUserId) {
             try {
@@ -1133,7 +1148,7 @@ io.on('connection', (socket) => {
               console.error('Error updating winner stats:', err);
             }
           }
-          
+
           // Notify remaining player (send directly to winner)
           io.to(winnerId).emit('match-finished', {
             roomId,
@@ -1142,7 +1157,7 @@ io.on('connection', (socket) => {
             message: 'Opponent disconnected. You win!',
             reason: 'opponent-disconnected'
           });
-          
+
           io.to(winnerId).emit('receive-message', {
             user: 'System',
             message: 'Opponent disconnected. You won the match! 🎉',
@@ -1152,11 +1167,11 @@ io.on('connection', (socket) => {
           // 2v2: Handle team disconnection
           const disconnectedTeam = state.teams.red.includes(socket.id) ? 'red' : 'blue';
           const winningTeam = disconnectedTeam === 'red' ? 'blue' : 'red';
-          
+
           state.finished = true;
           state.winnerTeam = winningTeam;
           roomState.set(roomId, state);
-          
+
           // Notify remaining players
           io.to(roomId).emit('match-finished', {
             roomId,
@@ -1164,7 +1179,7 @@ io.on('connection', (socket) => {
             message: `Opposing team disconnected. Team ${winningTeam} wins!`,
             reason: 'opponent-disconnected'
           });
-          
+
           io.to(roomId).emit('receive-message', {
             user: 'System',
             message: `Opposing team disconnected. Team ${winningTeam} wins! 🎉`,

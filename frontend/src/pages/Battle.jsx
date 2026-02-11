@@ -13,7 +13,7 @@ const LANGUAGE_CONFIG = {
     boilerplate: '# Write your code here\n',
   },
   cpp: {
-    label: 'C++ 17',
+    label: 'C++ ',
     monaco: 'cpp',
     judgeId: 54,
     boilerplate: `#include <bits/stdc++.h>
@@ -28,7 +28,7 @@ int main() {
 `,
   },
   java: {
-    label: 'Java 17',
+    label: 'Java ',
     monaco: 'java',
     judgeId: 62,
     boilerplate: `import java.io.*;
@@ -128,15 +128,15 @@ const Battle = () => {
     socket.on('receive-message', ({ user, socketId, message }) => {
       const isMe = socketId === socket.id;
       const isTeammate = matchType === '2v2' && teammates.includes(socketId) && !isMe;
-      
+
       // Track teammate names for 2v2 display
       if (isTeammate && !teammateNames.find(t => t.socketId === socketId)) {
         setTeammateNames(prev => [...prev, { socketId, username: user }]);
       }
-      
-      setChat(prev => [...prev, { 
-        user: isMe ? 'You' : user, 
-        message, 
+
+      setChat(prev => [...prev, {
+        user: isMe ? 'You' : user,
+        message,
         type: 'user',
         isMe,
         isTeammate
@@ -181,19 +181,19 @@ const Battle = () => {
         setWinner(data.winnerTeam === myTeam ? 'you' : 'opponent');
       }
       if (data.message) {
-        setChat(prev => [...prev, { 
-          user: 'System', 
-          message: data.message, 
-          type: 'system' 
+        setChat(prev => [...prev, {
+          user: 'System',
+          message: data.message,
+          type: 'system'
         }]);
       }
     });
 
     socket.on('player-disconnected', ({ socketId }) => {
-      setChat(prev => [...prev, { 
-        user: 'System', 
-        message: 'Opponent disconnected', 
-        type: 'system' 
+      setChat(prev => [...prev, {
+        user: 'System',
+        message: 'Opponent disconnected',
+        type: 'system'
       }]);
     });
 
@@ -209,10 +209,10 @@ const Battle = () => {
     });
 
     socket.on('opponent-solved', ({ solver }) => {
-      setChat(prev => [...prev, { 
-        user: 'System', 
-        message: 'Opponent solved the problem!', 
-        type: 'system' 
+      setChat(prev => [...prev, {
+        user: 'System',
+        message: 'Opponent solved the problem!',
+        type: 'system'
       }]);
     });
 
@@ -316,7 +316,7 @@ const Battle = () => {
     setShowLeaveConfirm(false);
     setPendingNavigation(null);
     setOutput('⏱️ Time is up! Auto-submitting your code...');
-    
+
     // Auto-submit current code (always submit, even if empty)
     if (socket) {
       setIsExecuting(true);
@@ -344,6 +344,9 @@ const Battle = () => {
     if (!socket || !roomId) return;
     setShowLeaveConfirm(false);
     socket.emit('leave-match', { roomId });
+    // Show lost modal and navigate
+    setShowLostModal(true);
+    setMatchFinished(true);
   }, [socket, roomId]);
 
   const cancelLeave = useCallback(() => {
@@ -430,7 +433,7 @@ const Battle = () => {
           </h2>
           <p className="text-xl text-gray-400 mb-8">
             {winner === socket?.id || winner === 'you'
-              ? 'Congratulations! You won the match!' 
+              ? 'Congratulations! You won the match!'
               : 'Better luck next time!'}
           </p>
           <button
@@ -448,7 +451,7 @@ const Battle = () => {
     <div className="h-screen flex flex-col overflow-hidden bg-dark-900">
       {/* Leave Confirmation Modal */}
       {showLeaveConfirm && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
           onClick={(e) => {
             // Close modal when clicking outside
@@ -595,11 +598,10 @@ const Battle = () => {
                 <h2 className="text-xl font-semibold text-gray-100">
                   {question?.title || 'Loading Problem...'}
                 </h2>
-                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                  question?.difficulty === 'easy' ? 'bg-green-500/20 text-green-400' :
+                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${question?.difficulty === 'easy' ? 'bg-green-500/20 text-green-400' :
                   question?.difficulty === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                  'bg-red-500/20 text-red-400'
-                }`}>
+                    'bg-red-500/20 text-red-400'
+                  }`}>
                   {question?.difficulty?.toUpperCase() || 'EASY'}
                 </span>
               </div>
@@ -727,11 +729,10 @@ const Battle = () => {
             <div className="bg-dark-900 border-b border-dark-700 flex flex-shrink-0">
               <button
                 onClick={() => setActiveTab('output')}
-                className={`px-4 py-2 text-sm font-medium transition relative ${
-                  activeTab === 'output'
-                    ? 'text-primary'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
+                className={`px-4 py-2 text-sm font-medium transition relative ${activeTab === 'output'
+                  ? 'text-primary'
+                  : 'text-gray-400 hover:text-gray-300'
+                  }`}
               >
                 Output
                 {activeTab === 'output' && (
@@ -740,11 +741,10 @@ const Battle = () => {
               </button>
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`px-4 py-2 text-sm font-medium transition relative ${
-                  activeTab === 'chat'
-                    ? 'text-primary'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
+                className={`px-4 py-2 text-sm font-medium transition relative ${activeTab === 'chat'
+                  ? 'text-primary'
+                  : 'text-gray-400 hover:text-gray-300'
+                  }`}
               >
                 Chat
                 {activeTab === 'chat' && (
@@ -788,13 +788,12 @@ const Battle = () => {
                       chat.map((msg, idx) => (
                         <div
                           key={idx}
-                          className={`p-2 rounded text-xs ${
-                            msg.type === 'system' 
-                              ? 'bg-dark-700/50 text-gray-400 italic border border-dark-600' 
-                              : msg.isMe
+                          className={`p-2 rounded text-xs ${msg.type === 'system'
+                            ? 'bg-dark-700/50 text-gray-400 italic border border-dark-600'
+                            : msg.isMe
                               ? 'bg-primary/15 border border-primary/30'
                               : 'bg-dark-700/30 border border-dark-600'
-                          }`}
+                            }`}
                         >
                           <span className={`font-semibold ${msg.isMe ? 'text-primary' : 'text-cyan-400'}`}>
                             {msg.user}:

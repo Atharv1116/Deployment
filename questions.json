@@ -31,5 +31,82 @@
     "difficulty": "easy",
     "language": "cpp",
     "solution": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);string s;getline(cin,s);reverse(s.begin(), s.end());cout<<s;}\n"
+  },
+  {
+    "title": "Find Maximum",
+    "description": "Given an array of integers, find and print the maximum value.",
+    "inputFormat": "First line: integer n (array size). Second line: n space-separated integers.",
+    "outputFormat": "Single integer (maximum value)",
+    "sampleInput": "5\n3 7 2 9 1",
+    "sampleOutput": "9",
+    "difficulty": "easy",
+    "language": "python",
+    "solution": "import sys\nlines = sys.stdin.read().strip().split('\\n')\nn = int(lines[0])\narr = list(map(int, lines[1].split()))\nprint(max(arr))"
+  },
+  {
+    "title": "Count Vowels",
+    "description": "Count the number of vowels (a, e, i, o, u) in a given string. Case insensitive.",
+    "inputFormat": "Single line string",
+    "outputFormat": "Single integer (vowel count)",
+    "sampleInput": "Hello World",
+    "sampleOutput": "3",
+    "difficulty": "easy",
+    "language": "python",
+    "solution": "import sys\ns = sys.stdin.read().strip().lower()\nvowels = 'aeiou'\ncount = sum(1 for c in s if c in vowels)\nprint(count)"
+  },
+  {
+    "title": "Palindrome Check",
+    "description": "Check if a given string is a palindrome (reads the same forwards and backwards). Ignore spaces and case.",
+    "inputFormat": "Single line string",
+    "outputFormat": "Print 'YES' if palindrome, 'NO' otherwise",
+    "sampleInput": "racecar",
+    "sampleOutput": "YES",
+    "difficulty": "easy",
+    "language": "python",
+    "solution": "import sys\ns = sys.stdin.read().strip().replace(' ', '').lower()\nif s == s[::-1]:\n    print('YES')\nelse:\n    print('NO')"
+  },
+  {
+    "title": "FizzBuzz",
+    "description": "For integers from 1 to n, print 'Fizz' if divisible by 3, 'Buzz' if divisible by 5, 'FizzBuzz' if divisible by both, otherwise print the number.",
+    "inputFormat": "Single integer n",
+    "outputFormat": "n lines of output",
+    "sampleInput": "15",
+    "sampleOutput": "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz",
+    "difficulty": "easy",
+    "language": "python",
+    "solution": "import sys\nn = int(sys.stdin.read().strip())\nfor i in range(1, n+1):\n    if i % 15 == 0:\n        print('FizzBuzz')\n    elif i % 3 == 0:\n        print('Fizz')\n    elif i % 5 == 0:\n        print('Buzz')\n    else:\n        print(i)"
+  },
+  {
+    "title": "Array Sum",
+    "description": "Calculate the sum of all elements in an array.",
+    "inputFormat": "First line: integer n (array size). Second line: n space-separated integers.",
+    "outputFormat": "Single integer (sum of all elements)",
+    "sampleInput": "4\n1 2 3 4",
+    "sampleOutput": "10",
+    "difficulty": "easy",
+    "language": "python",
+    "solution": "import sys\nlines = sys.stdin.read().strip().split('\\n')\nn = int(lines[0])\narr = list(map(int, lines[1].split()))\nprint(sum(arr))"
+  },
+  {
+    "title": "Even or Odd",
+    "description": "Determine if a given integer is even or odd.",
+    "inputFormat": "Single integer n",
+    "outputFormat": "Print 'EVEN' or 'ODD'",
+    "sampleInput": "7",
+    "sampleOutput": "ODD",
+    "difficulty": "easy",
+    "language": "python",
+    "solution": "import sys\nn = int(sys.stdin.read().strip())\nif n % 2 == 0:\n    print('EVEN')\nelse:\n    print('ODD')"
+  },
+  {
+    "title": "String Length",
+    "description": "Return the length of a given string (excluding newline).",
+    "inputFormat": "Single line string",
+    "outputFormat": "Single integer (length of string)",
+    "sampleInput": "CodeQuest",
+    "sampleOutput": "9",
+    "difficulty": "easy",
+    "language": "python",
+    "solution": "import sys\ns = sys.stdin.read().strip()\nprint(len(s))"
   }
 ]
