@@ -246,6 +246,7 @@ const CustomRoomLobby = () => {
     }
 
     const isHost = room.hostId === user.id;
+    const canStart = isHost && room.totalPlayers >= 2; // Enable at 2+ players
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 p-4">
@@ -257,7 +258,7 @@ const CustomRoomLobby = () => {
                     className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 mb-6 border border-gray-700"
                 >
                     <div className="flex items-center justify-between flex-wrap gap-4">
-                        {/* Room Code & Admin Button */}
+                        {/* Room Code */}
                         <div>
                             <div className="text-sm text-gray-400 mb-1">Room Code</div>
                             <div className="flex items-center gap-2">
@@ -275,14 +276,6 @@ const CustomRoomLobby = () => {
                                         <Copy className="w-5 h-5 text-gray-300" />
                                     )}
                                 </button>
-                                <button
-                                    onClick={handleJoinAsAdmin}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 text-sm"
-                                    title="Join as Administrator"
-                                >
-                                    <Eye className="w-4 h-4" />
-                                    Join as Admin
-                                </button>
                             </div>
                         </div>
 
@@ -297,22 +290,34 @@ const CustomRoomLobby = () => {
                             </div>
                         </div>
 
+                        {/* Difficulty Selector (Host Only) */}
+                        {isHost && (
+                            <div className="text-center">
+                                <div className="text-sm font-medium text-gray-300 mb-2">Difficulty</div>
+                                <div className="flex gap-2">
+                                    {['easy', 'medium', 'hard'].map((level) => (
+                                        <button
+                                            key={level}
+                                            onClick={() => handleUpdateSettings({ difficulty: level })}
+                                            className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${room.settings?.difficulty === level
+                                                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white scale-105'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                }`}
+                                        >
+                                            {level.charAt(0).toUpperCase() + level.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Controls */}
                         <div className="flex gap-3">
-                            {isHost && (
-                                <button
-                                    onClick={() => setShowSettings(true)}
-                                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
-                                >
-                                    <Settings className="w-5 h-5" />
-                                    Settings
-                                </button>
-                            )}
-
                             <button
                                 onClick={handleStartMatch}
-                                disabled={!isHost}
+                                disabled={!canStart}
                                 className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold"
+                                title={!isHost ? "Only host can start" : !canStart ? "Need at least 2 players" : "Start the match"}
                             >
                                 <Play className="w-5 h-5" />
                                 Start Match
@@ -329,25 +334,36 @@ const CustomRoomLobby = () => {
                     </div>
                 </motion.div>
 
-                {/* Administrator Slots */}
-                {room.administrators && room.administrators.length > 0 && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="bg-blue-900/30 backdrop-blur-sm rounded-xl p-4 mb-6 border border-blue-700"
-                    >
-                        <div className="flex items-center gap-2 mb-3">
+                {/* Administrator Slots - Horizontal Layout */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="bg-blue-900/30 backdrop-blur-sm rounded-xl p-4 mb-6 border border-blue-700"
+                >
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
                             <Eye className="w-5 h-5 text-blue-400" />
                             <h3 className="text-lg font-bold text-white">Administrators (Spectators)</h3>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                            {room.administrators.map((admin) => (
-                                <AdminSlot key={admin.slotNumber} admin={admin} />
-                            ))}
-                        </div>
-                    </motion.div>
-                )}
+                        <button
+                            onClick={handleJoinAsAdmin}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 text-sm"
+                        >
+                            <Eye className="w-4 h-4" />
+                            Join as Admin
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-5 gap-3">
+                        {room.administrators && room.administrators.map((admin) => (
+                            <AdminSlot key={admin.slotNumber} admin={admin} />
+                        ))}
+                        {/* Render empty slots if less than 5 admins */}
+                        {Array.from({ length: Math.max(0, 5 - (room.administrators?.length || 0)) }).map((_, index) => (
+                            <AdminSlot key={`empty-${index}`} admin={{ slotNumber: (room.administrators?.length || 0) + index + 1 }} />
+                        ))}
+                    </div>
+                </motion.div>
 
                 {/* Teams Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -363,15 +379,6 @@ const CustomRoomLobby = () => {
                     ))}
                 </div>
             </div>
-
-            {/* Settings Modal (Host Only) */}
-            {showSettings && isHost && (
-                <SettingsModal
-                    room={room}
-                    onClose={() => setShowSettings(false)}
-                    onUpdate={handleUpdateSettings}
-                />
-            )}
 
             {/* Match Starting Popup */}
             <AnimatePresence>
@@ -415,20 +422,21 @@ const CustomRoomLobby = () => {
 const AdminSlot = ({ admin }) => {
     if (!admin.adminId) {
         return (
-            <div className="p-3 rounded-lg border-2 border-dashed border-blue-600/50 bg-blue-900/20">
-                <div className="text-center text-blue-400 text-sm">Empty</div>
+            <div className="p-4 rounded-lg border-2 border-dashed border-blue-600/50 bg-blue-900/20 text-center">
+                <div className="text-blue-400 text-sm">Slot {admin.slotNumber}</div>
+                <div className="text-blue-500/50 text-xs mt-1">Empty</div>
             </div>
         );
     }
 
     return (
-        <div className="p-3 rounded-lg border-2 border-blue-500 bg-blue-900/40">
-            <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">
+        <div className="p-4 rounded-lg border-2 border-blue-500 bg-blue-900/40">
+            <div className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold">
                     {admin.username?.[0]?.toUpperCase() || '?'}
                 </div>
-                <div className="flex-1 min-w-0">
-                    <div className="text-white text-sm font-medium truncate flex items-center gap-1">
+                <div className="text-center">
+                    <div className="text-white text-sm font-medium truncate flex items-center gap-1 justify-center">
                         {admin.username || 'Admin'}
                         <Eye className="w-3 h-3 text-blue-400" />
                     </div>
@@ -480,8 +488,8 @@ const SettingsModal = ({ room, onClose, onUpdate }) => {
                                     key={level}
                                     onClick={() => setDifficulty(level)}
                                     className={`px-4 py-3 rounded-lg font-semibold transition-all ${difficulty === level
-                                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white scale-105'
-                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white scale-105'
+                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                         }`}
                                 >
                                     {level.charAt(0).toUpperCase() + level.slice(1)}
@@ -553,8 +561,8 @@ const PlayerSlot = ({ slot, teamNumber, onClick, isMySlot, isHost, canClick }) =
                 onClick={onClick}
                 disabled={!canClick}
                 className={`w-full p-3 rounded-lg border-2 border-dashed transition-all ${canClick
-                        ? 'border-gray-600 hover:border-purple-500 hover:bg-purple-500/10 cursor-pointer'
-                        : 'border-gray-700 cursor-not-allowed opacity-50'
+                    ? 'border-gray-600 hover:border-purple-500 hover:bg-purple-500/10 cursor-pointer'
+                    : 'border-gray-700 cursor-not-allowed opacity-50'
                     }`}
             >
                 <div className="text-center text-gray-500 text-sm">
@@ -570,8 +578,8 @@ const PlayerSlot = ({ slot, teamNumber, onClick, isMySlot, isHost, canClick }) =
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className={`p-3 rounded-lg border-2 transition-all ${isMySlot
-                    ? 'border-purple-500 bg-purple-500/20'
-                    : 'border-gray-600 bg-gray-700/50'
+                ? 'border-purple-500 bg-purple-500/20'
+                : 'border-gray-600 bg-gray-700/50'
                 }`}
         >
             <div className="flex items-center gap-2">
@@ -586,8 +594,14 @@ const PlayerSlot = ({ slot, teamNumber, onClick, isMySlot, isHost, canClick }) =
                         {slot.username || 'Player'}
                         {isHost && <Crown className="w-4 h-4 text-yellow-400" />}
                     </div>
-                    {isMySlot && (
+                    {isHost && (
+                        <div className="text-xs text-yellow-400 font-semibold">Host</div>
+                    )}
+                    {isMySlot && !isHost && (
                         <div className="text-xs text-purple-400">You</div>
+                    )}
+                    {isMySlot && isHost && (
+                        <div className="text-xs text-purple-400">You (Host)</div>
                     )}
                 </div>
             </div>
