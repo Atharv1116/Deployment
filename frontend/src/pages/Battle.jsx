@@ -151,11 +151,14 @@ const Battle = () => {
       setOutput(message || 'Evaluating...');
     });
 
-    socket.on('evaluation-result', ({ ok, correct, details, message }) => {
+    socket.on('evaluation-result', ({ ok, correct, details, message, isRun }) => {
       setIsExecuting(false);
       setExecutionIntent(null);
       if (ok && correct) {
-        setOutput(`✅ Correct!\n${JSON.stringify(details, null, 2)}`);
+        const resultMessage = isRun
+          ? `✅ Code runs correctly! (This was a test run - click Submit to finalize)\n${JSON.stringify(details, null, 2)}`
+          : `✅ Correct!\n${JSON.stringify(details, null, 2)}`;
+        setOutput(resultMessage);
       } else if (ok) {
         setOutput(`❌ Wrong Output\n${JSON.stringify(details, null, 2)}`);
       } else {
@@ -273,7 +276,8 @@ const Battle = () => {
       roomId,
       code: currentCode,
       language_id: currentLanguageConfig.judgeId,
-      inputOverride: question?.sampleInput
+      inputOverride: question?.sampleInput,
+      isSubmit: intent === 'submit' // Run = false, Submit = true
     });
   };
 

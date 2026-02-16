@@ -267,6 +267,7 @@ io.on('connection', (socket) => {
         type: '1v1',
         players: [player1.id, player2.id],
         playerIds: [],
+        submittedPlayers: [],
         finished: false,
         startedAt: new Date()
       };
@@ -355,6 +356,7 @@ io.on('connection', (socket) => {
         playerIds: [],
         teams: { blue: teamBlue, red: teamRed },
         teamIds: { blue: [], red: [] },
+        submittedPlayers: [],
         finished: false,
         startedAt: new Date()
       };
@@ -620,13 +622,23 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     socket.to(roomId).emit('user-joined', socket.id);
 
-    // Send question to player if they join after match-found was emitted
+    // Send complete match data to player joining the room
     const question = roomQuestion.get(roomId);
-    if (question) {
+    const state = roomState.get(roomId);
+
+    if (question && state) {
+      // Send match-found event with complete data structure
       socket.emit('match-found', {
         roomId,
         question,
-        type: roomState.get(roomId)?.type || '1v1'
+        type: state.type || '1v1',
+        // Include team info for 2v2
+        team: state.teams?.blue?.includes(socket.id) ? 'blue' :
+          state.teams?.red?.includes(socket.id) ? 'red' : null,
+        teammates: state.teams?.blue?.includes(socket.id) ? state.teams.blue :
+          state.teams?.red?.includes(socket.id) ? state.teams.red : [],
+        opponents: state.teams?.blue?.includes(socket.id) ? state.teams.red :
+          state.teams?.red?.includes(socket.id) ? state.teams.blue : []
       });
     }
   });
@@ -863,7 +875,7 @@ io.on('connection', (socket) => {
   });
 
   // Code submission
-  socket.on('submit-code', async ({ roomId, code, language_id, inputOverride }) => {
+  socket.on('submit-code', async ({ roomId, code, language_id, inputOverride, isSubmit = true }) => {
     try {
       const state = roomState.get(roomId);
       const question = roomQuestion.get(roomId);
@@ -872,8 +884,16 @@ io.on('connection', (socket) => {
         socket.emit('evaluation-result', { ok: false, message: 'Room or question not found' });
         return;
       }
+
+      // Check if match is already finished
       if (state.finished) {
         socket.emit('evaluation-result', { ok: false, message: 'Match already finished' });
+        return;
+      }
+
+      // Check if this player already submitted (only for Submit, not Run)
+      if (isSubmit && state.submittedPlayers && state.submittedPlayers.includes(socket.id)) {
+        socket.emit('evaluation-result', { ok: false, message: 'You have already submitted your solution' });
         return;
       }
 
@@ -900,6 +920,25 @@ io.on('connection', (socket) => {
         correct
       };
 
+      // If this is just a Run (not Submit), return results without updating match state
+      if (!isSubmit) {
+        socket.emit('evaluation-result', { ok: true, correct, details, isRun: true });
+        if (!correct) {
+          // Provide AI feedback for wrong answers even on Run
+          const userId = playerSessions.get(socket.id);
+          if (userId) {
+            const user = await User.findById(userId);
+            if (user) {
+              const errorMsg = judgeRes.stderr || judgeRes.compile_output || 'Wrong output';
+              const feedback = await getAIFeedback(code, question, errorMsg, 0);
+              socket.emit('ai-feedback', { feedback });
+            }
+          }
+        }
+        return;
+      }
+
+      // This is a Submit - process win/loss logic
       if (correct) {
         const submitTime = Date.now() - (state.startedAt?.getTime() || Date.now());
 
@@ -911,7 +950,7 @@ io.on('connection', (socket) => {
           await handleBattleRoyaleSolve(roomId, socket.id, state, submitTime);
         }
       } else {
-        // Wrong answer - provide AI feedback
+        // Wrong answer on Submit - provide AI feedback
         const userId = playerSessions.get(socket.id);
         if (userId) {
           const user = await User.findById(userId);
@@ -944,6 +983,11 @@ io.on('connection', (socket) => {
   });
 
   async function handle1v1Win(roomId, socketId, state, question, details, submitTime) {
+    // Prevent duplicate wins if match already finished
+    if (state.finished) {
+      return;
+    }
+
     const winnerId = socketId;
     const opponentId = state.players.find(id => id !== winnerId);
     const winnerUserId = playerSessions.get(winnerId);
@@ -954,13 +998,29 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Mark this player as submitted
+    if (!state.submittedPlayers) state.submittedPlayers = [];
+    state.submittedPlayers.push(socketId);
+
     const winner = await User.findById(winnerUserId);
     const loser = await User.findById(opponentUserId);
 
     const [newWinnerRating, newLoserRating] = calculateElo(winner.rating, loser.rating);
 
+    // Calculate performance-based rating adjustment
+    const submitTimeSeconds = submitTime / 1000;
+    let performanceBonus = 0;
+
+    if (submitTimeSeconds < 120) { // < 2 minutes
+      performanceBonus = 5;
+    } else if (submitTimeSeconds < 300) { // < 5 minutes
+      performanceBonus = 3;
+    } else if (submitTimeSeconds > 900) { // > 15 minutes
+      performanceBonus = -2;
+    }
+
     // Update winner
-    winner.rating = newWinnerRating;
+    winner.rating = newWinnerRating + performanceBonus;
     winner.wins += 1;
     winner.matches += 1;
     winner.xp += calculateXP('win', question.difficulty, '1v1');
@@ -1012,6 +1072,11 @@ io.on('connection', (socket) => {
   }
 
   async function handle2v2Win(roomId, socketId, state, question, details, submitTime) {
+    // Prevent duplicate wins if match already finished
+    if (state.finished) {
+      return;
+    }
+
     const teams = state.teams || {};
     const isRed = teams.red && teams.red.includes(socketId);
     const teamName = isRed ? 'red' : 'blue';
@@ -1019,6 +1084,10 @@ io.on('connection', (socket) => {
     const losingTeam = teams[teamName === 'red' ? 'blue' : 'red'];
     const winningTeamIds = state.teamIds[teamName];
     const losingTeamIds = state.teamIds[teamName === 'red' ? 'blue' : 'red'];
+
+    // Mark this player as submitted
+    if (!state.submittedPlayers) state.submittedPlayers = [];
+    state.submittedPlayers.push(socketId);
 
     state.finished = true;
     state.winnerTeam = teamName;
@@ -1033,9 +1102,21 @@ io.on('connection', (socket) => {
 
     const { team1, team2 } = calculateTeamElo(winnerRatings, loserRatings, true);
 
+    // Calculate performance-based rating adjustment
+    const submitTimeSeconds = submitTime / 1000;
+    let performanceBonus = 0;
+
+    if (submitTimeSeconds < 120) { // < 2 minutes
+      performanceBonus = 5;
+    } else if (submitTimeSeconds < 300) { // < 5 minutes
+      performanceBonus = 3;
+    } else if (submitTimeSeconds > 900) { // > 15 minutes
+      performanceBonus = -2;
+    }
+
     // Update winners
     for (let i = 0; i < winners.length; i++) {
-      winners[i].rating = team1[i];
+      winners[i].rating = team1[i] + performanceBonus;
       winners[i].wins += 1;
       winners[i].matches += 1;
       winners[i].xp += calculateXP('win', question.difficulty, '2v2');
