@@ -248,6 +248,7 @@ io.on('connection', (socket) => {
     io.to(payload.roomId).emit('player-left-match', payload);
   });
 
+
   // ---------- 1v1 Matchmaking ----------
   socket.on('join-1v1', async () => {
     if (!queue1v1.find(s => s.id === socket.id)) {
@@ -279,7 +280,15 @@ io.on('connection', (socket) => {
       if (userId1) state.playerIds.push(userId1);
       if (userId2) state.playerIds.push(userId2);
 
-      io.to(roomId).emit('match-found', {
+      // Emit match-found to both players individually to ensure delivery
+      player1.emit('match-found', {
+        roomId,
+        players: [player1.id, player2.id],
+        type: '1v1',
+        question
+      });
+
+      player2.emit('match-found', {
         roomId,
         players: [player1.id, player2.id],
         type: '1v1',

@@ -176,13 +176,29 @@ const Battle = () => {
 
     socket.on('match-finished', (data) => {
       setMatchFinished(true);
-      // Handle both 1v1 and 2v2 winner formats
+
+      // Determine if this user won or lost
+      let didIWin = false;
+
       if (data.winner) {
-        setWinner(data.winner);
+        // 1v1: check if winner socket ID matches ours
+        didIWin = data.winner === socket.id;
       } else if (data.winnerTeam) {
         // 2v2: check if our team won
-        setWinner(data.winnerTeam === myTeam ? 'you' : 'opponent');
+        didIWin = data.winnerTeam === myTeam;
       }
+
+      // Set winner state and show appropriate modal
+      setWinner(didIWin ? 'you' : 'opponent');
+
+      if (didIWin) {
+        setShowWonModal(true);
+        setShowLostModal(false);
+      } else {
+        setShowWonModal(false);
+        setShowLostModal(true);
+      }
+
       if (data.message) {
         setChat(prev => [...prev, {
           user: 'System',
@@ -502,9 +518,9 @@ const Battle = () => {
             animate={{ scale: 1, opacity: 1 }}
             className="glass p-8 rounded-lg max-w-md w-full mx-4 text-center"
           >
-            <h3 className="text-3xl font-bold mb-4 text-red-400">You Lost</h3>
+            <h3 className="text-3xl font-bold mb-4 text-red-400">😔 You Lost</h3>
             <p className="text-gray-300 mb-6">
-              You left the match. Your opponent wins!
+              {winner === 'opponent' && matchFinished ? 'Your opponent solved the problem first. Better luck next time!' : 'You left the match. Your opponent wins!'}
             </p>
             <button
               onClick={handleLostOk}
@@ -516,7 +532,7 @@ const Battle = () => {
         </div>
       )}
 
-      {/* Won Modal - When opponent leaves */}
+      {/* Won Modal */}
       {showWonModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <motion.div
@@ -525,9 +541,9 @@ const Battle = () => {
             className="glass p-8 rounded-lg max-w-md w-full mx-4 text-center"
           >
             <Trophy className="text-primary mx-auto mb-4" size={60} />
-            <h3 className="text-3xl font-bold mb-4 text-primary">You Won!</h3>
+            <h3 className="text-3xl font-bold mb-4 text-primary">🎉 You Won! 🎉</h3>
             <p className="text-gray-300 mb-6">
-              Your opponent left the match. You win!
+              {winner === 'you' && matchFinished ? 'Congratulations! You solved the problem first!' : 'Your opponent left the match. You win!'}
             </p>
             <button
               onClick={handleWonOk}
