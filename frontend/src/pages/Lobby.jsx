@@ -30,28 +30,36 @@ const Lobby = () => {
 
     socket.on("queued", (data) => {
       console.log('[Lobby] Received queued event:', data);
-      setQueueStatus({
-        mode: data.mode,
-        size: data.queueSize,
-        position: data.position,
-        team: data.team,
-        teamStatus: data.teamStatus,
-        teamBlueSize: data.teamBlueSize,
-        teamRedSize: data.teamRedSize
-      })
-      setSearching(true)
-    })
+
+      // Use setTimeout to defer state updates and avoid setState during render
+      setTimeout(() => {
+        setQueueStatus({
+          mode: data.mode,
+          size: data.queueSize,
+          position: data.position,
+          team: data.team,
+          teamStatus: data.teamStatus,
+          teamBlueSize: data.teamBlueSize,
+          teamRedSize: data.teamRedSize
+        });
+        setSearching(true);
+      }, 0);
+    });
 
     socket.on("match-found", (data) => {
       console.log('[Lobby] Received match-found:', data);
-      console.debug("match_found", data)
-      setSearching(false)
-      setMatchOverlay({
-        ...data,
-        questionTitle: data.question?.title || "Mystery Problem",
-        questionDifficulty: data.question?.difficulty || "???",
-      })
-    })
+      console.debug("match_found", data);
+
+      // Use setTimeout to defer state updates and avoid setState during render
+      setTimeout(() => {
+        setSearching(false);
+        setMatchOverlay({
+          ...data,
+          questionTitle: data.question?.title || "Mystery Problem",
+          questionDifficulty: data.question?.difficulty || "???",
+        });
+      }, 0);
+    });
 
     socket.on("match-finished", (payload) => {
       if (!matchOverlay) return
