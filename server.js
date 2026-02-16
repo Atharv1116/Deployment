@@ -18,6 +18,7 @@ const connectDB = require('./config/database');
 const User = require('./models/User');
 const Question = require('./models/Question');
 const Match = require('./models/Match');
+const CustomRoom = require('./models/CustomRoom');
 
 // Utils & Services
 const { submitToJudge0, LANGUAGE_IDS } = require('./config/judge0');
@@ -61,6 +62,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRouter);
 app.use('/api/ai-tutor', aiTutorRouter);
+app.use('/api/custom-rooms', require('./routes/customRooms'));
 
 // Code evaluation endpoint
 app.post('/api/evaluate', async (req, res) => {
@@ -1231,6 +1233,371 @@ io.on('connection', (socket) => {
 
     socket.emit('evaluation-result', { ok: true, correct: true, details: { solved: true } });
   }
+
+  // ========== CUSTOM ROOM SOCKET HANDLERS ==========
+
+  // Create custom room
+  socket.on('create-custom-room', async ({ maxTeams, maxPlayersPerTeam, settings, userId }) => {
+    try {
+      const { generateUniqueRoomCode } = require('./utils/roomCodeGenerator');
+
+      // Generate unique room code
+      const roomCode = await generateUniqueRoomCode(async (code) => {
+        const existing = await CustomRoom.findOne({ roomCode: code });
+        return !!existing;
+      });
+
+      // Generate unique room ID
+      const roomId = `custom_br_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+
+      // Create room
+      const room = new CustomRoom({
+        roomId,
+        roomCode,
+        hostId: userId,
+        hostSocketId: socket.id,
+        maxTeams: maxTeams || 10,
+        maxPlayersPerTeam: maxPlayersPerTeam || 10,
+        settings: {
+          map: settings?.map || 'default',
+          region: settings?.region || 'auto',
+          minPlayersToStart: settings?.minPlayersToStart || 10
+        }
+      });
+
+      // Initialize teams and slots
+      room.initializeTeams();
+
+      // Assign host to Team 1, Slot 1
+      const user = await User.findById(userId);
+      room.assignPlayerToSlot(1, 1, userId, socket.id, user.username);
+
+      await room.save();
+
+      // Join socket room
+      socket.join(roomId);
+
+      console.log(`[CustomRoom] Created room ${roomCode} (${roomId}) by user ${userId}`);
+
+      socket.emit('room-created', {
+        ok: true,
+        room: {
+          roomId: room.roomId,
+          roomCode: room.roomCode,
+          hostId: room.hostId,
+          maxTeams: room.maxTeams,
+          maxPlayersPerTeam: room.maxPlayersPerTeam,
+          roomStatus: room.roomStatus,
+          totalPlayers: room.totalPlayers,
+          teams: room.teams,
+          settings: room.settings
+        }
+      });
+    } catch (error) {
+      console.error('[CustomRoom] Error creating room:', error);
+      socket.emit('room-error', { error: error.message });
+    }
+  });
+
+  // Join custom room
+  socket.on('join-custom-room', async ({ roomCode, userId }) => {
+    try {
+      const room = await CustomRoom.findOne({ roomCode: roomCode.toUpperCase() });
+
+      if (!room) {
+        return socket.emit('room-error', { error: 'Room not found' });
+      }
+
+      if (room.roomStatus !== 'waiting') {
+        return socket.emit('room-error', { error: 'Room has already started or ended' });
+      }
+
+      if (room.isFull()) {
+        return socket.emit('room-error', { error: 'Room is full' });
+      }
+
+      // Check if room has expired
+      if (new Date() > room.expiresAt) {
+        room.roomStatus = 'ended';
+        await room.save();
+        return socket.emit('room-error', { error: 'Room has expired' });
+      }
+
+      // Find first available slot
+      const availableSlot = room.findAvailableSlot();
+      if (!availableSlot) {
+        return socket.emit('room-error', { error: 'No available slots' });
+      }
+
+      // Assign player to slot
+      const user = await User.findById(userId);
+      room.assignPlayerToSlot(availableSlot.teamNumber, availableSlot.slotNumber, userId, socket.id, user.username);
+      await room.save();
+
+      // Join socket room
+      socket.join(room.roomId);
+
+      console.log(`[CustomRoom] User ${userId} joined room ${roomCode} at Team ${availableSlot.teamNumber}, Slot ${availableSlot.slotNumber}`);
+
+      // Notify player
+      socket.emit('room-joined', {
+        ok: true,
+        room: {
+          roomId: room.roomId,
+          roomCode: room.roomCode,
+          hostId: room.hostId,
+          maxTeams: room.maxTeams,
+          maxPlayersPerTeam: room.maxPlayersPerTeam,
+          roomStatus: room.roomStatus,
+          totalPlayers: room.totalPlayers,
+          teams: room.teams,
+          settings: room.settings
+        },
+        mySlot: availableSlot
+      });
+
+      // Broadcast to all players in room
+      io.to(room.roomId).emit('player-joined', {
+        playerId: userId,
+        username: user.username,
+        teamNumber: availableSlot.teamNumber,
+        slotNumber: availableSlot.slotNumber,
+        totalPlayers: room.totalPlayers
+      });
+
+      // Send updated room state
+      io.to(room.roomId).emit('room-state-update', {
+        teams: room.teams,
+        totalPlayers: room.totalPlayers
+      });
+    } catch (error) {
+      console.error('[CustomRoom] Error joining room:', error);
+      socket.emit('room-error', { error: error.message });
+    }
+  });
+
+  // Leave custom room
+  socket.on('leave-custom-room', async ({ roomId, userId }) => {
+    try {
+      const room = await CustomRoom.findOne({ roomId });
+
+      if (!room) {
+        return socket.emit('room-error', { error: 'Room not found' });
+      }
+
+      const removed = room.removePlayer(userId);
+
+      if (!removed) {
+        return socket.emit('room-error', { error: 'Player not in room' });
+      }
+
+      // Check if player was host
+      const wasHost = room.hostId.toString() === userId.toString();
+
+      // If host left and there are other players, transfer host
+      if (wasHost && room.totalPlayers > 0) {
+        // Find first player in Team 1
+        for (const team of room.teams) {
+          for (const slot of team.slots) {
+            if (slot.playerId) {
+              room.hostId = slot.playerId;
+              room.hostSocketId = slot.socketId;
+              console.log(`[CustomRoom] Host transferred to ${slot.playerId}`);
+
+              // Notify new host
+              io.to(slot.socketId).emit('host-changed', {
+                newHostId: slot.playerId,
+                message: 'You are now the host'
+              });
+
+              break;
+            }
+          }
+          if (room.hostId.toString() !== userId.toString()) break;
+        }
+      }
+
+      await room.save();
+
+      // Leave socket room
+      socket.leave(roomId);
+
+      console.log(`[CustomRoom] User ${userId} left room ${room.roomCode}`);
+
+      // Notify player
+      socket.emit('room-left', { ok: true });
+
+      // Broadcast to remaining players
+      io.to(roomId).emit('player-left', {
+        playerId: userId,
+        teamNumber: removed.teamNumber,
+        slotNumber: removed.slotNumber,
+        totalPlayers: room.totalPlayers
+      });
+
+      // Send updated room state
+      io.to(roomId).emit('room-state-update', {
+        teams: room.teams,
+        totalPlayers: room.totalPlayers,
+        hostId: room.hostId
+      });
+
+      // Delete room if empty
+      if (room.totalPlayers === 0) {
+        await CustomRoom.deleteOne({ roomId });
+        console.log(`[CustomRoom] Deleted empty room ${room.roomCode}`);
+      }
+    } catch (error) {
+      console.error('[CustomRoom] Error leaving room:', error);
+      socket.emit('room-error', { error: error.message });
+    }
+  });
+
+  // Switch team slot
+  socket.on('switch-team-slot', async ({ roomId, userId, targetTeamNumber, targetSlotNumber }) => {
+    try {
+      const room = await CustomRoom.findOne({ roomId });
+
+      if (!room) {
+        return socket.emit('room-error', { error: 'Room not found' });
+      }
+
+      if (room.roomStatus !== 'waiting') {
+        return socket.emit('room-error', { error: 'Cannot switch slots after match has started' });
+      }
+
+      // Find target team and slot
+      const targetTeam = room.teams.find(t => t.teamNumber === targetTeamNumber);
+      if (!targetTeam) {
+        return socket.emit('room-error', { error: 'Invalid team number' });
+      }
+
+      const targetSlot = targetTeam.slots.find(s => s.slotNumber === targetSlotNumber);
+      if (!targetSlot) {
+        return socket.emit('room-error', { error: 'Invalid slot number' });
+      }
+
+      if (targetSlot.playerId || targetSlot.isLocked) {
+        return socket.emit('room-error', { error: 'Slot is occupied or locked' });
+      }
+
+      // Remove player from current slot
+      const currentSlot = room.removePlayer(userId);
+      if (!currentSlot) {
+        return socket.emit('room-error', { error: 'Player not in room' });
+      }
+
+      // Assign to new slot
+      const user = await User.findById(userId);
+      const assigned = room.assignPlayerToSlot(targetTeamNumber, targetSlotNumber, userId, socket.id, user.username);
+
+      if (!assigned) {
+        // Rollback - reassign to original slot
+        room.assignPlayerToSlot(currentSlot.teamNumber, currentSlot.slotNumber, userId, socket.id, user.username);
+        return socket.emit('room-error', { error: 'Failed to switch slot' });
+      }
+
+      await room.save();
+
+      console.log(`[CustomRoom] User ${userId} moved from Team ${currentSlot.teamNumber} Slot ${currentSlot.slotNumber} to Team ${targetTeamNumber} Slot ${targetSlotNumber}`);
+
+      // Broadcast to all players
+      io.to(roomId).emit('player-moved', {
+        playerId: userId,
+        username: user.username,
+        fromTeam: currentSlot.teamNumber,
+        fromSlot: currentSlot.slotNumber,
+        toTeam: targetTeamNumber,
+        toSlot: targetSlotNumber
+      });
+
+      // Send updated room state
+      io.to(roomId).emit('room-state-update', {
+        teams: room.teams,
+        totalPlayers: room.totalPlayers
+      });
+    } catch (error) {
+      console.error('[CustomRoom] Error switching slot:', error);
+      socket.emit('room-error', { error: error.message });
+    }
+  });
+
+  // Start custom match
+  socket.on('start-custom-match', async ({ roomId, userId }) => {
+    try {
+      const room = await CustomRoom.findOne({ roomId });
+
+      if (!room) {
+        return socket.emit('room-error', { error: 'Room not found' });
+      }
+
+      if (room.hostId.toString() !== userId.toString()) {
+        return socket.emit('room-error', { error: 'Only host can start the match' });
+      }
+
+      if (room.roomStatus !== 'waiting') {
+        return socket.emit('room-error', { error: 'Room has already started or ended' });
+      }
+
+      if (!room.hasMinimumPlayers()) {
+        return socket.emit('room-error', {
+          error: `Minimum ${room.settings.minPlayersToStart} players required. Currently: ${room.totalPlayers}`
+        });
+      }
+
+      room.roomStatus = 'started';
+      room.startedAt = new Date();
+      await room.save();
+
+      console.log(`[CustomRoom] Room ${room.roomCode} started by host ${userId}`);
+
+      // Get question for battle royale
+      const question = await getRandomQuestion();
+      roomQuestion.set(roomId, question);
+
+      // Initialize battle royale state
+      const playerList = [];
+      for (const team of room.teams) {
+        for (const slot of team.slots) {
+          if (slot.playerId) {
+            playerList.push({
+              id: slot.playerId.toString(),
+              socketId: slot.socketId,
+              username: slot.username,
+              team: team.teamNumber
+            });
+          }
+        }
+      }
+
+      roomState.set(roomId, {
+        type: 'battle-royale',
+        players: playerList.map(p => p.socketId),
+        playerIds: playerList.map(p => p.id),
+        scores: new Map(playerList.map(p => [p.socketId, { attempts: 0, solved: false, solvedAt: null }])),
+        finished: false,
+        startedAt: new Date()
+      });
+
+      // Broadcast match start
+      io.to(roomId).emit('match-starting', {
+        roomId,
+        question,
+        players: playerList,
+        message: 'Match is starting!'
+      });
+
+      // Navigate all players to battle royale page
+      setTimeout(() => {
+        io.to(roomId).emit('navigate-to-match', {
+          destination: `/battle-royale/${roomId}`
+        });
+      }, 3000);
+    } catch (error) {
+      console.error('[CustomRoom] Error starting match:', error);
+      socket.emit('room-error', { error: error.message });
+    }
+  });
 
   // Disconnect cleanup
   socket.on('disconnect', async () => {

@@ -11,6 +11,8 @@ import Register from './pages/Register';
 import Lobby from './pages/Lobby';
 import Battle from './pages/Battle';
 import BattleRoyale from './pages/BattleRoyale';
+import BattleRoyaleMode from './pages/BattleRoyaleMode';
+import CustomRoomLobby from './pages/CustomRoomLobby';
 import Dashboard from './pages/Dashboard';
 import Leaderboard from './pages/Leaderboard';
 import AITutor from './pages/AITutor';
@@ -66,6 +68,26 @@ function App() {
                   <ProtectedRoute>
                     <PageTransition>
                       <Battle />
+                    </PageTransition>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/battle-royale-mode"
+                element={
+                  <ProtectedRoute>
+                    <PageTransition>
+                      <BattleRoyaleMode />
+                    </PageTransition>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/custom-room/:roomId"
+                element={
+                  <ProtectedRoute>
+                    <PageTransition>
+                      <CustomRoomLobby />
                     </PageTransition>
                   </ProtectedRoute>
                 }
