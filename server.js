@@ -78,6 +78,33 @@ app.post('/api/evaluate', async (req, res) => {
   }
 });
 
+// Question recovery endpoint - allows clients to fetch question if socket event is missed
+app.get('/api/match/:roomId/question', authenticateToken, async (req, res) => {
+  const { roomId } = req.params;
+
+  try {
+    // First check if question is in memory (active match)
+    const question = roomQuestion.get(roomId);
+    if (question) {
+      console.log(`[API] Question recovered from memory for room: ${roomId}`);
+      return res.json({ ok: true, question });
+    }
+
+    // If not in memory, check database for completed match
+    const match = await Match.findOne({ roomId }).populate('question');
+    if (match && match.question) {
+      console.log(`[API] Question recovered from database for room: ${roomId}`);
+      return res.json({ ok: true, question: match.question });
+    }
+
+    console.error(`[API] Question not found for room: ${roomId}`);
+    res.status(404).json({ ok: false, error: 'Question not found for this match' });
+  } catch (error) {
+    console.error(`[API] Error recovering question:`, error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 app.post('/api/match/:roomId/forfeit', authenticateToken, async (req, res) => {
   const { roomId } = req.params;
   const forfeitingUserId = req.userId;

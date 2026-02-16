@@ -4,6 +4,7 @@ import { useSocket } from '../contexts/SocketContext';
 import Editor from '@monaco-editor/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Trophy, Lightbulb, Clock } from 'lucide-react';
+import axios from 'axios';
 
 const LANGUAGE_CONFIG = {
   python: {
@@ -263,8 +264,36 @@ const Battle = () => {
       socket.off('player-disconnected');
       socket.off('opponent-left-match');
       socket.off('you-left-match');
+      socket.off('ai-feedback');
     };
-  }, [socket, roomId]);
+  }, [socket, roomId, matchType, teammates, myTeam]);
+
+  // Fallback: If question not received via socket within 3 seconds, fetch from API
+  useEffect(() => {
+    if (!roomId || question) return; // Already have question, no need to fetch
+
+    const timeout = setTimeout(async () => {
+      if (!question) {
+        console.log('[Battle] Question not received via socket, fetching from API...');
+        try {
+          const token = localStorage.getItem('token');
+          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+          const response = await axios.get(`${API_URL}/api/match/${roomId}/question`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          if (response.data.ok && response.data.question) {
+            console.log('[Battle] Question recovered from API:', response.data.question.title);
+            setQuestion(response.data.question);
+          }
+        } catch (error) {
+          console.error('[Battle] Failed to fetch question from API:', error);
+        }
+      }
+    }, 3000); // Wait 3 seconds before fallback fetch
+
+    return () => clearTimeout(timeout);
+  }, [roomId, question]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });

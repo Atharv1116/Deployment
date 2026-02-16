@@ -23,16 +23,21 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (user && token) {
       // Use environment variable for socket URL, fallback to localhost for development
-      const socketUrl = import.meta.env.VITE_SOCKET_URL || 
-                       import.meta.env.VITE_API_URL || 
-                       'http://localhost:3000';
-      
+      const socketUrl = import.meta.env.VITE_SOCKET_URL ||
+        import.meta.env.VITE_API_URL ||
+        'http://localhost:3000';
+
       const newSocket = io(socketUrl, {
         auth: { token, userId: user.id },
-        // Use polling as fallback for Vercel compatibility
-        transports: ['polling', 'websocket'],
+        // Improved socket stability configuration
+        transports: ['websocket', 'polling'], // Try websocket first
         upgrade: true,
-        rememberUpgrade: true
+        rememberUpgrade: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000
       });
 
       newSocket.on('connect', () => {
