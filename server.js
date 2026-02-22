@@ -1171,9 +1171,15 @@ io.on('connection', (socket) => {
         submissionLocks.delete(socket.id);
       }
 
+      // Safety guard — if Judge0 threw and judgeRes is still undefined, bail cleanly
+      if (!judgeRes) {
+        socket.emit('evaluation-result', { ok: false, message: 'Code execution service unavailable. Please try again.' });
+        return;
+      }
+
       const stdout = (judgeRes.stdout || '').trim();
-      const expected = (question.sampleOutput || '').trim();
-      const correct = judgeRes.correct === true || stdout === expected;
+      const expectedOut = (question.sampleOutput || '').trim();  // renamed: no conflict with inner `expected`
+      const correct = judgeRes.correct === true || stdout === expectedOut;
 
       const details = {
         status: judgeRes.status?.description,
