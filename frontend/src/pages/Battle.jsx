@@ -89,6 +89,9 @@ const Battle = () => {
   const [showLostModal, setShowLostModal] = useState(false);
   const [showWonModal, setShowWonModal] = useState(false);
   const [showDrawModal, setShowDrawModal] = useState(false);
+  const [showAnalysisScreen, setShowAnalysisScreen] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState(null);       // fetched post-match AI report
+  const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('output');
   const [timeLeft, setTimeLeft] = useState(DEFAULT_TIMER);
   const [pendingNavigation, setPendingNavigation] = useState(null);
@@ -425,10 +428,30 @@ const Battle = () => {
     navigate(destination);
   };
 
-  const handleWonOk = () => {
+  const handleWonReturnHome = () => {
     setShowWonModal(false);
     setPendingNavigation(null);
     navigate('/lobby');
+  };
+
+  const handleWonSeeAnalysis = async () => {
+    setShowWonModal(false);
+    setShowAnalysisScreen(true);
+    if (!matchResult?.matchId) return;
+    setAiAnalysisLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const resp = await axios.get(`${API_URL}/api/match/${matchResult.matchId}/ai-analysis`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.data.ok) setAiAnalysis(resp.data);
+    } catch (e) {
+      console.error('[Battle] AI analysis fetch failed:', e);
+      setAiAnalysis({ analysis: 'Analysis unavailable. Check your code for edge cases and optimizations.' });
+    } finally {
+      setAiAnalysisLoading(false);
+    }
   };
 
   // Handle leave match request from navbar
@@ -493,14 +516,133 @@ const Battle = () => {
     );
   };
 
+  // ---- Full-screen Analysis View ----
+  if (showAnalysisScreen) {
+    const myRating = matchResult?.ratingChanges?.find(r => r.username === matchResult?.stats?.winner?.username || r.after !== undefined);
+    const solveMs = matchResult?.stats?.winner?.solveTimeMs;
+    const solveSec = solveMs ? Math.round(solveMs / 1000) : null;
+    const attempts = matchResult?.stats?.winner?.attempts ?? '?';
+    return (
+      <div className="min-h-screen bg-dark-900 text-white flex flex-col">
+        {/* Header */}
+        <div className="bg-dark-800 border-b border-dark-700 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Trophy className="text-primary" size={28} />
+            <div>
+              <h1 className="text-xl font-bold text-primary">Match Analysis</h1>
+              <p className="text-xs text-gray-400">{question?.title || 'Problem'} · {question?.difficulty?.toUpperCase()}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/lobby')}
+            className="flex items-center gap-2 bg-primary text-dark-900 px-5 py-2 rounded-lg font-semibold hover:bg-cyan-400 transition text-sm"
+          >
+            🏠 Return to Lobby
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full">
+
+          {/* Victory Banner */}
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-5 rounded-2xl bg-gradient-to-r from-primary/20 to-cyan-500/10 border border-primary/30 text-center">
+            <div className="text-4xl mb-2">🏆</div>
+            <h2 className="text-2xl font-bold text-primary mb-1">Victory!</h2>
+            <p className="text-gray-400 text-sm">You solved it first. Well played!</p>
+          </motion.div>
+
+          {/* Stats Grid */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-dark-800 border border-dark-700 rounded-xl p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">⏱ Solve Time</p>
+              <p className="text-2xl font-bold text-white">
+                {solveSec != null
+                  ? solveSec >= 60 ? `${Math.floor(solveSec / 60)}m ${solveSec % 60}s` : `${solveSec}s`
+                  : '—'}
+              </p>
+            </div>
+            <div className="bg-dark-800 border border-dark-700 rounded-xl p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">🔁 Attempts</p>
+              <p className="text-2xl font-bold text-white">{attempts}</p>
+            </div>
+            <div className="bg-dark-800 border border-dark-700 rounded-xl p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">🎯 Accuracy</p>
+              <p className="text-2xl font-bold text-white">
+                {attempts > 0 ? `${Math.round((1 / attempts) * 100)}%` : '100%'}
+              </p>
+            </div>
+          </motion.div>
+
+          {/* Rating Changes */}
+          {matchResult?.ratingChanges?.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+              className="mb-6 bg-dark-800 border border-dark-700 rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                <TrendingUp size={16} className="text-primary" /> Rating Changes
+              </h3>
+              {matchResult.ratingChanges.map((r, i) => {
+                const delta = r.delta ?? (r.after - r.before);
+                const newR = r.after ?? r.newRating;
+                const oldR = r.before ?? r.oldRating;
+                return (
+                  <div key={i} className="flex items-center justify-between py-2 border-b border-dark-700 last:border-0">
+                    <div>
+                      <p className="font-semibold text-white text-sm">{r.username || 'Player'}</p>
+                      <p className="text-xs text-gray-500">{oldR} → {newR}</p>
+                    </div>
+                    <span className={`text-xl font-bold flex items-center gap-1 ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {delta >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                      {delta >= 0 ? '+' : ''}{delta}
+                    </span>
+                  </div>
+                );
+              })}
+            </motion.div>
+          )}
+
+          {/* AI Coaching Report */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+            className="bg-dark-800 border border-primary/20 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
+              <Lightbulb size={16} /> AI Coaching Report
+            </h3>
+            {aiAnalysisLoading ? (
+              <div className="flex items-center gap-3 text-gray-400 text-sm py-4">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                Generating your personal coaching report...
+              </div>
+            ) : aiAnalysis ? (
+              <div>
+                <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap mb-4">
+                  {aiAnalysis.analysis}
+                </p>
+                {aiAnalysis.weakTopics?.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-500 mb-2">Topics to practice:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {aiAnalysis.weakTopics.map((t, i) => (
+                        <span key={i} className="bg-primary/10 border border-primary/30 text-primary text-xs px-2 py-1 rounded-full">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No analysis available.</p>
+            )}
+          </motion.div>
+
+        </div>
+      </div>
+    );
+  }
+
   if (matchFinished && !showWonModal && !showLostModal && !showDrawModal) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="glass p-12 rounded-lg text-center max-w-2xl"
-        >
+      <div className="min-h-screen flex items-center justify-center bg-dark-900">
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+          className="glass p-12 rounded-lg text-center max-w-2xl">
           <Trophy className="text-primary mx-auto mb-4" size={80} />
           <h2 className="text-4xl font-bold mb-4 text-gradient">
             {winner === 'you' ? 'Victory!' : 'Defeat'}
@@ -603,40 +745,81 @@ const Battle = () => {
         </div>
       )}
 
-      {/* Won Modal */}
-      {showWonModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-            className="glass p-8 rounded-lg max-w-md w-full mx-4 text-center">
-            <Trophy className="text-primary mx-auto mb-4" size={60} />
-            <h3 className="text-3xl font-bold mb-2 text-primary">🎉 You Won!</h3>
-            {matchResult?.stats?.winner && (
-              <div className="flex gap-4 justify-center text-sm mb-4">
-                <span className="text-gray-400">⏱ {matchResult.stats.winner.solveTimeMs
-                  ? `${Math.round(matchResult.stats.winner.solveTimeMs / 1000)}s` : 'N/A'}</span>
-                <span className="text-gray-400">🔁 {matchResult.stats.winner.attempts} attempt(s)</span>
+      {/* Won Modal — two-button victory popup */}
+      {showWonModal && (() => {
+        const myRatingRow = matchResult?.ratingChanges?.find(r => (r.delta ?? 0) > 0) ||
+          matchResult?.ratingChanges?.[0];
+        const delta = myRatingRow ? (myRatingRow.delta ?? (myRatingRow.after - myRatingRow.before)) : null;
+        return (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center z-50">
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              transition={{ type: 'spring', damping: 18 }}
+              className="glass rounded-2xl max-w-sm w-full mx-4 overflow-hidden">
+
+              {/* Gradient top bar */}
+              <div className="h-2 bg-gradient-to-r from-primary via-cyan-400 to-primary" />
+
+              <div className="p-7 text-center">
+                {/* Trophy animation */}
+                <motion.div
+                  initial={{ scale: 0, rotate: -20 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
+                  className="text-6xl mb-3">🏆</motion.div>
+
+                <h3 className="text-3xl font-extrabold text-primary mb-1">You Won!</h3>
+                <p className="text-gray-400 text-sm mb-5">Excellent solve — you beat your opponent!</p>
+
+                {/* Quick stats */}
+                <div className="flex justify-center gap-6 mb-5">
+                  {matchResult?.stats?.winner?.solveTimeMs && (
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-white">
+                        {matchResult.stats.winner.solveTimeMs >= 60000
+                          ? `${Math.floor(matchResult.stats.winner.solveTimeMs / 60000)}m ${Math.round((matchResult.stats.winner.solveTimeMs % 60000) / 1000)}s`
+                          : `${Math.round(matchResult.stats.winner.solveTimeMs / 1000)}s`}
+                      </p>
+                      <p className="text-xs text-gray-500">Solve Time</p>
+                    </div>
+                  )}
+                  {matchResult?.stats?.winner?.attempts !== undefined && (
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-white">{matchResult.stats.winner.attempts}</p>
+                      <p className="text-xs text-gray-500">Attempt(s)</p>
+                    </div>
+                  )}
+                  {delta !== null && (
+                    <div className="text-center">
+                      <p className={`text-xl font-bold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {delta >= 0 ? '+' : ''}{delta}
+                      </p>
+                      <p className="text-xs text-gray-500">Rating</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={handleWonSeeAnalysis}
+                    className="w-full bg-primary text-dark-900 py-3 rounded-xl font-bold hover:bg-cyan-400 transition text-sm tracking-wide"
+                  >
+                    📊 See Full Analysis
+                  </button>
+                  <button
+                    onClick={handleWonReturnHome}
+                    className="w-full bg-dark-700 border border-dark-600 text-gray-300 py-3 rounded-xl font-semibold hover:bg-dark-600 transition text-sm"
+                  >
+                    🏠 Return to Lobby
+                  </button>
+                </div>
               </div>
-            )}
-            {matchResult?.ratingChanges?.length > 0 && (
-              <div className="mb-6 p-3 bg-dark-700/60 rounded-lg border border-dark-600">
-                <p className="text-xs text-gray-400 mb-2">Rating Change</p>
-                {matchResult.ratingChanges.map((r, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-300">{r.username || 'You'}</span>
-                    <span className={`font-bold ${(r.delta ?? (r.after - r.before)) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {(r.delta ?? (r.after - r.before)) >= 0 ? '+' : ''}{r.delta ?? (r.after - r.before)} → {r.after ?? r.newRating}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button onClick={handleWonOk}
-              className="bg-primary text-dark-900 px-8 py-3 rounded-lg font-semibold hover:bg-cyan-400 transition">
-              OK
-            </button>
-          </motion.div>
-        </div>
-      )}
+            </motion.div>
+          </div>
+        );
+      })()}
 
       <div className="flex-1 flex overflow-hidden border-t border-dark-700">
         {/* Left Panel - Question Section (LeetCode style) */}
