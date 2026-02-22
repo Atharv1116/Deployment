@@ -197,6 +197,12 @@ const Battle = () => {
       setShowLostModal(true);
     };
 
+    // rating-update: backfill real ratingChanges + matchId once DB pipeline completes
+    const handleRatingUpdate = ({ matchId, ratingChanges }) => {
+      console.log('[Battle] rating-update received, matchId:', matchId, 'changes:', ratingChanges);
+      setMatchResult(prev => prev ? { ...prev, matchId: matchId || prev.matchId, ratingChanges: ratingChanges?.length > 0 ? ratingChanges : prev.ratingChanges } : prev);
+    };
+
     // Register with named refs so .off only removes this exact handler
     socket.on('match-found', handleMatchFound);
     socket.on('timer-tick', handleTimerTick);
@@ -204,6 +210,7 @@ const Battle = () => {
     socket.on('match-finished', handleMatchFinished);
     socket.on('opponent-left-match', handleOpponentLeft);
     socket.on('you-left-match', handleYouLeft);
+    socket.on('rating-update', handleRatingUpdate);
 
     return () => {
       socket.off('match-found', handleMatchFound);
@@ -212,6 +219,7 @@ const Battle = () => {
       socket.off('match-finished', handleMatchFinished);
       socket.off('opponent-left-match', handleOpponentLeft);
       socket.off('you-left-match', handleYouLeft);
+      socket.off('rating-update', handleRatingUpdate);
     };
     // Only re-run when socket itself changes — myTeam/matchType read via refs
   }, [socket, roomId]);

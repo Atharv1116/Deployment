@@ -1251,11 +1251,25 @@ io.on('connection', (socket) => {
       const matchDurationMs = (state.timerDuration || MATCH_TIME_LIMIT_SECONDS) * 1000;
 
       if (state.type === '1v1') {
-        await handle1v1Win(roomId, socket.id, state, question, details, submitTimeMs, matchDurationMs);
+        const opponentId = state.players?.find(id => id !== socket.id);
+        // Phase 1: emit match-finished NOW (no DB dependency)
+        emitMatchFinished1v1(roomId, socket.id, opponentId, state, submitTimeMs);
+        // Phase 2: save to DB and compute ratings in background
+        runPostMatchPipeline1v1(roomId, socket.id, opponentId, state, question, submitTimeMs, matchDurationMs)
+          .catch(err => console.error('[Pipeline] Unhandled 1v1 error:', err.message));
       } else if (state.type === '2v2') {
-        await handle2v2Win(roomId, socket.id, state, question, details, submitTimeMs, matchDurationMs);
+        const teams = state.teams || {};
+        const isRed = teams.red?.includes(socket.id);
+        const teamName = isRed ? 'red' : 'blue';
+        const winTeam = teams[teamName] || [];
+        // Phase 1: immediate
+        emitMatchFinished2v2(roomId, teamName, winTeam, state);
+        // Phase 2: background
+        runPostMatchPipeline2v2(roomId, teamName, state, question, submitTimeMs, matchDurationMs)
+          .catch(err => console.error('[Pipeline] Unhandled 2v2 error:', err.message));
       } else if (state.type === 'battle-royale') {
-        await handleBattleRoyaleSolve(roomId, socket.id, state, submitTimeMs);
+        handleBattleRoyaleSolve(roomId, socket.id, state, submitTimeMs)
+          .catch(err => console.error('[Pipeline] Unhandled BR error:', err.message));
       }
 
     } catch (err) {
@@ -1265,144 +1279,112 @@ io.on('connection', (socket) => {
     }
   });
 
-  async function handle1v1Win(roomId, socketId, state, question, details, submitTimeMs, matchDurationMs) {
-    // state.finished already set by caller — just finalise
-    const winnerId = socketId;
-    const opponentId = state.players.find(id => id !== winnerId);
-    const winnerUserId = playerSessions.get(winnerId);
-    const opponentUserId = playerSessions.get(opponentId);
-
-    const winnerAttempts = (state.playerAttempts?.[winnerId] || 1) - 1; // subtract the winning attempt
+  // Phase 1: emit match-finished IMMEDIATELY (no DB dependency)
+  function emitMatchFinished1v1(roomId, winnerId, opponentId, state, submitTimeMs) {
+    const winnerAttempts = state.playerAttempts?.[winnerId] || 1;
     const loserAttempts = state.playerAttempts?.[opponentId] || 0;
-
-    let ratingChanges = [];
-    let savedMatch;
-
-    try {
-      // Build submission log for DB
-      const submissionLog = (state.submissionLog || []).map(s => ({
-        player: s.userId,
-        attempt: s.attempt,
-        timestamp: s.timestamp,
-        correct: s.correct,
-        timeTakenMs: s.timeTakenMs,
-        judgeStatus: s.judgeStatus,
-        stderr: s.stderr,
-        stdout: s.stdout
-      }));
-
-      savedMatch = await Match.create({
-        roomId, type: '1v1',
-        players: [winnerUserId, opponentUserId].filter(Boolean),
-        playerSocketIds: [winnerId, opponentId],
-        question: question?._id,
-        winner: winnerUserId,
-        results: [
-          { player: winnerUserId, solved: true, timeTaken: submitTimeMs, attempts: winnerAttempts + 1, score: 100, hiddenTestsPassed: true, accuracy: 100 },
-          { player: opponentUserId, solved: false, timeTaken: null, attempts: loserAttempts, score: 0, hiddenTestsPassed: false, accuracy: 0 }
-        ],
-        submissionLog,
-        analytics: {
-          avgAttempts: ((winnerAttempts + 1) + loserAttempts) / 2,
-          fastestSolveMs: submitTimeMs,
-          totalSubmissions: submissionLog.length,
-          topicTags: question?.tags || []
-        },
-        timerDurationSeconds: state.timerDuration || MATCH_TIME_LIMIT_SECONDS,
-        status: 'finished', endReason: 'solved',
-        startedAt: state.startedAt, finishedAt: new Date()
-      });
-
-      ratingChanges = await run1v1Pipeline({
-        matchId: savedMatch._id,
-        winnerUserId,
-        loserUserId: opponentUserId,
-        isDraw: false,
-        winnerSolveMs: submitTimeMs,
-        winnerAttempts: winnerAttempts,
-        loserAttempts: loserAttempts,
-        matchDurationMs,
-        question
-      });
-    } catch (err) {
-      console.error('[1v1Win] Pipeline error:', err.message);
-    }
-
-    const matchFinishedData = {
+    const payload = {
       roomId, type: '1v1',
-      winner: winnerId,
-      winnerUserId,
-      matchId: savedMatch?._id?.toString(),
+      winner: winnerId,            // socket ID — frontend checks vs socket.id
+      winnerUserId: playerSessions.get(winnerId) || null,
+      matchId: null,               // backfilled later via 'rating-update'
       draw: false,
-      ratingChanges,
+      ratingChanges: [],           // backfilled later via 'rating-update'
       stats: {
-        winner: { solveTimeMs: submitTimeMs, attempts: winnerAttempts + 1, accuracy: 100 },
+        winner: { solveTimeMs: submitTimeMs, attempts: winnerAttempts, accuracy: 100 },
         loser: { solveTimeMs: null, attempts: loserAttempts, accuracy: 0 }
       },
-      message: `✅ Correct submission! Winner decided.`
+      message: '✅ Correct submission! Match over.'
     };
+    console.log(`[Server] emitMatchFinished1v1 → room ${roomId}, winner=${winnerId}`);
+    io.to(roomId).emit('match-finished', payload);
+    roomState.delete(roomId);
+    roomQuestion.delete(roomId);
+    return { winnerAttempts, loserAttempts };
+  }
 
-    console.log(`[Server] Emitting match-finished for room ${roomId}`);
-    io.to(roomId).emit('match-finished', matchFinishedData);
-    socket.to(roomId).emit('opponent-solved', { solver: socketId, details });
-
+  // Phase 1: 2v2 immediate emit
+  function emitMatchFinished2v2(roomId, teamName, winningTeamSockets, state) {
+    const payload = {
+      roomId, type: '2v2',
+      winner: null, winnerTeam: teamName, winningPlayers: winningTeamSockets,
+      matchId: null, draw: false, ratingChanges: [],
+      message: `✅ Team ${teamName} wins!`
+    };
+    console.log(`[Server] emitMatchFinished2v2 → room ${roomId}, team=${teamName}`);
+    io.to(roomId).emit('match-finished', payload);
     roomState.delete(roomId);
     roomQuestion.delete(roomId);
   }
 
-  async function handle2v2Win(roomId, socketId, state, question, details, submitTimeMs, matchDurationMs) {
-    // state.finished already set by caller
+  // Phase 2: background pipeline for 1v1
+  async function runPostMatchPipeline1v1(roomId, winnerId, opponentId, state, question, submitTimeMs, matchDurationMs) {
+    const winnerUserId = playerSessions.get(winnerId);
+    const opponentUserId = playerSessions.get(opponentId);
+    const winnerAttempts = state.playerAttempts?.[winnerId] || 1;
+    const loserAttempts = state.playerAttempts?.[opponentId] || 0;
+    let savedMatch, ratingChanges = [];
+    try {
+      const submissionLog = (state.submissionLog || []).map(s => ({
+        player: s.userId, attempt: s.attempt, timestamp: s.timestamp,
+        correct: s.correct, timeTakenMs: s.timeTakenMs,
+        judgeStatus: s.judgeStatus, stderr: s.stderr, stdout: s.stdout
+      }));
+      savedMatch = await Match.create({
+        roomId, type: '1v1',
+        players: [winnerUserId, opponentUserId].filter(Boolean),
+        playerSocketIds: [winnerId, opponentId],
+        question: question?._id, winner: winnerUserId,
+        results: [
+          { player: winnerUserId, solved: true, timeTaken: submitTimeMs, attempts: winnerAttempts, score: 100, hiddenTestsPassed: true, accuracy: 100 },
+          { player: opponentUserId, solved: false, timeTaken: null, attempts: loserAttempts, score: 0, hiddenTestsPassed: false, accuracy: 0 }
+        ],
+        submissionLog,
+        analytics: { avgAttempts: (winnerAttempts + loserAttempts) / 2, fastestSolveMs: submitTimeMs, totalSubmissions: submissionLog.length, topicTags: question?.tags || [] },
+        timerDurationSeconds: state.timerDuration || MATCH_TIME_LIMIT_SECONDS,
+        status: 'finished', endReason: 'solved', startedAt: state.startedAt, finishedAt: new Date()
+      });
+      ratingChanges = await run1v1Pipeline({
+        matchId: savedMatch._id, winnerUserId, loserUserId: opponentUserId, isDraw: false,
+        winnerSolveMs: submitTimeMs, winnerAttempts, loserAttempts, matchDurationMs, question
+      });
+      console.log('[Pipeline 1v1] Done, ratingChanges:', ratingChanges);
+    } catch (err) {
+      console.error('[Pipeline 1v1] Error (UI already updated):', err.message);
+    }
+    // Push enriched data to both players (they may still be on analysis screen)
+    io.to(roomId).emit('rating-update', { matchId: savedMatch?._id?.toString() || null, ratingChanges });
+  }
+
+  // Phase 2: background pipeline for 2v2
+  async function runPostMatchPipeline2v2(roomId, teamName, state, question, submitTimeMs, matchDurationMs) {
     const teams = state.teams || {};
-    const isRed = teams.red?.includes(socketId);
-    const teamName = isRed ? 'red' : 'blue';
-    const winningTeam = teams[teamName];
-    const losingTeam = teams[teamName === 'red' ? 'blue' : 'red'];
-    const winningTeamIds = state.teamIds[teamName];
-    const losingTeamIds = state.teamIds[teamName === 'red' ? 'blue' : 'red'];
-
-    let ratingChanges = [];
-    let savedMatch;
-
+    const losingTeamName = teamName === 'red' ? 'blue' : 'red';
+    const winningTeam = teams[teamName] || [];
+    const losingTeam = teams[losingTeamName] || [];
+    const winningTeamIds = (state.teamIds || {})[teamName] || [];
+    const losingTeamIds = (state.teamIds || {})[losingTeamName] || [];
+    let savedMatch, ratingChanges = [];
     try {
       savedMatch = await Match.create({
         roomId, type: '2v2',
-        players: [...(winningTeamIds || []), ...(losingTeamIds || [])],
-        playerSocketIds: [...(winningTeam || []), ...(losingTeam || [])],
-        question: question?._id,
-        winnerTeam: teamName,
+        players: [...winningTeamIds, ...losingTeamIds].filter(Boolean),
+        playerSocketIds: [...winningTeam, ...losingTeam],
+        question: question?._id, winnerTeam: teamName,
         results: [
-          ...(winningTeamIds || []).map(id => ({ player: id, solved: true, score: 100, accuracy: 100 })),
-          ...(losingTeamIds || []).map(id => ({ player: id, solved: false, score: 0, accuracy: 0 }))
+          ...winningTeamIds.map(id => ({ player: id, solved: true, score: 100, accuracy: 100 })),
+          ...losingTeamIds.map(id => ({ player: id, solved: false, score: 0, accuracy: 0 }))
         ],
         timerDurationSeconds: state.timerDuration || MATCH_TIME_LIMIT_SECONDS,
-        status: 'finished', endReason: 'solved',
-        startedAt: state.startedAt, finishedAt: new Date()
+        status: 'finished', endReason: 'solved', startedAt: state.startedAt, finishedAt: new Date()
       });
-
       ratingChanges = await run2v2Pipeline({
-        matchId: savedMatch._id,
-        winningTeamIds,
-        losingTeamIds,
-        solveMs: submitTimeMs,
-        matchDurationMs,
-        question
+        matchId: savedMatch._id, winningTeamIds, losingTeamIds, solveMs: submitTimeMs, matchDurationMs, question
       });
     } catch (err) {
-      console.error('[2v2Win] Pipeline error:', err.message);
+      console.error('[Pipeline 2v2] Error (UI already updated):', err.message);
     }
-
-    io.to(roomId).emit('match-finished', {
-      roomId, type: '2v2',
-      winnerTeam: teamName,
-      winningPlayers: winningTeam,
-      matchId: savedMatch?._id?.toString(),
-      draw: false,
-      ratingChanges,
-      message: `✅ Team ${teamName} wins!`
-    });
-
-    roomState.delete(roomId);
-    roomQuestion.delete(roomId);
+    io.to(roomId).emit('rating-update', { matchId: savedMatch?._id?.toString() || null, ratingChanges });
   }
 
   async function handleBattleRoyaleSolve(roomId, socketId, state, submitTimeMs) {
