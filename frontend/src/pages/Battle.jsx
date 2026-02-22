@@ -104,10 +104,18 @@ const Battle = () => {
   const chatEndRef = useRef(null);
   const timerHandleRef = useRef(null);
   const timerExpiredRef = useRef(false);
+  // Refs to read latest values in socket callbacks without stale closures
+  const myTeamRef = useRef(myTeam);
+  const matchTypeRef = useRef(matchType);
+  const teammatesRef = useRef(teammates);
+  useEffect(() => { myTeamRef.current = myTeam; }, [myTeam]);
+  useEffect(() => { matchTypeRef.current = matchType; }, [matchType]);
+  useEffect(() => { teammatesRef.current = teammates; }, [teammates]);
   const currentLanguageConfig = LANGUAGE_CONFIG[language] || LANGUAGE_CONFIG.python;
   const currentCode = codeMap[language] ?? '';
   const hasRunnableCode = currentCode.trim().length > 0;
 
+  // ---- EFFECT 1: Join room, match-critical listeners (only re-runs when socket changes) ----
   useEffect(() => {
     if (!socket) return;
 
@@ -116,103 +124,53 @@ const Battle = () => {
 
     const handleMatchFound = (data) => {
       console.log('[Battle] Received match-found:', data);
-      setTimeout(() => {
-        if (data.question) setQuestion(data.question);
-        // Use server-provided timerDuration if available
-        if (data.timerDuration) setTimeLeft(data.timerDuration);
-        if (data.type === '2v2') {
-          setMatchType('2v2');
-          setMyTeam(data.team || null);
-          setTeammates(data.teammates || []);
-          setOpponents(data.opponents || []);
-        } else {
-          setMatchType('1v1');
-        }
-      }, 0);
+      if (data.question) setQuestion(data.question);
+      if (data.timerDuration) setTimeLeft(data.timerDuration);
+      if (data.type === '2v2') {
+        setMatchType('2v2');
+        setMyTeam(data.team || null);
+        setTeammates(data.teammates || []);
+        setOpponents(data.opponents || []);
+      } else {
+        setMatchType('1v1');
+      }
     };
 
-    socket.on('match-found', handleMatchFound);
-
-    // Server-authoritative timer tick
-    socket.on('timer-tick', ({ remaining }) => {
+    const handleTimerTick = ({ remaining }) => {
       setTimeLeft(remaining);
-    });
+    };
 
-    // Editor freeze: someone submitted correctly, match is decided
-    socket.on('match-locked', ({ winnerId }) => {
+    const handleMatchLocked = ({ winnerId }) => {
+      console.log('[Battle] match-locked received, winnerId:', winnerId, 'my id:', socket.id);
       setEditorLocked(true);
       if (winnerId && winnerId !== socket.id) {
         setOutput('🔒 Match locked — opponent submitted a correct solution.');
       }
-    });
+    };
 
-    socket.on('receive-message', ({ user, socketId, message }) => {
-      const isMe = socketId === socket.id;
-      const isTeammate = matchType === '2v2' && teammates.includes(socketId) && !isMe;
-
-      // Track teammate names for 2v2 display
-      if (isTeammate && !teammateNames.find(t => t.socketId === socketId)) {
-        setTeammateNames(prev => [...prev, { socketId, username: user }]);
-      }
-
-      setChat(prev => [...prev, {
-        user: isMe ? 'You' : user,
-        message,
-        type: 'user',
-        isMe,
-        isTeammate
-      }]);
-    });
-
-    socket.on('score-update', ({ user, message }) => {
-      setChat(prev => [...prev, { user, message, type: 'system' }]);
-    });
-
-    socket.on('evaluation-started', ({ message }) => {
-      setOutput(message || 'Evaluating...');
-    });
-
-    socket.on('evaluation-result', ({ ok, correct, details, message, isRun }) => {
-      setIsExecuting(false);
-      setExecutionIntent(null);
-      if (ok && correct) {
-        const resultMessage = isRun
-          ? `✅ Code runs correctly! (This was a test run - click Submit to finalize)\n${JSON.stringify(details, null, 2)}`
-          : `✅ Correct!\n${JSON.stringify(details, null, 2)}`;
-        setOutput(resultMessage);
-      } else if (ok) {
-        setOutput(`❌ Wrong Output\n${JSON.stringify(details, null, 2)}`);
-      } else {
-        setOutput(message || 'Evaluation failed. Please try again.');
-      }
-    });
-
-    socket.on('ai-feedback', ({ feedback }) => {
-      setAiFeedback(feedback);
-    });
-
-    socket.on('hint-received', ({ hint }) => {
-      setAiFeedback(hint || 'No hint available at this time.');
-    });
-
-    socket.on('match-finished', (data) => {
-      console.log('[Battle] Received match-finished:', data);
+    // CRITICAL: Read socket.id and myTeam via refs so this closure is never stale
+    const handleMatchFinished = (data) => {
+      console.log('[Battle] match-finished received, data.winner:', data.winner, 'socket.id:', socket.id, 'myTeam:', myTeamRef.current);
       setMatchFinished(true);
       setEditorLocked(true);
       setMatchResult(data);
 
       if (data.draw) {
+        console.log('[Battle] Draw — showing draw modal');
         setShowDrawModal(true);
         return;
       }
 
       let didIWin = false;
       if (data.winner) {
+        // 1v1: compare against live socket.id (socket object is stable in this effect)
         didIWin = data.winner === socket.id;
       } else if (data.winnerTeam) {
-        didIWin = data.winnerTeam === myTeam;
+        // 2v2: read via ref so never stale
+        didIWin = data.winnerTeam === myTeamRef.current;
       }
 
+      console.log('[Battle] didIWin:', didIWin, '— opening', didIWin ? 'WON' : 'LOST', 'modal');
       setWinner(didIWin ? 'you' : 'opponent');
       if (didIWin) {
         setShowWonModal(true);
@@ -223,51 +181,99 @@ const Battle = () => {
       if (data.message) {
         setChat(prev => [...prev, { user: 'System', message: data.message, type: 'system' }]);
       }
-    });
+    };
 
-    socket.on('player-disconnected', ({ socketId }) => {
-      setChat(prev => [...prev, {
-        user: 'System',
-        message: 'Opponent disconnected',
-        type: 'system'
-      }]);
-    });
-
-    socket.on('opponent-left-match', () => {
+    const handleOpponentLeft = () => {
+      console.log('[Battle] opponent-left-match — auto-win');
       setMatchFinished(true);
+      setMatchResult(null);
       setWinner('you');
       setShowWonModal(true);
-      setShowLostModal(false);
-    });
+    };
 
-    socket.on('you-left-match', () => {
+    const handleYouLeft = () => {
+      setMatchFinished(true);
+      setWinner('opponent');
       setShowLostModal(true);
-    });
+    };
 
-    socket.on('opponent-solved', ({ solver }) => {
-      setChat(prev => [...prev, {
-        user: 'System',
-        message: 'Opponent solved the problem!',
-        type: 'system'
-      }]);
-    });
+    // Register with named refs so .off only removes this exact handler
+    socket.on('match-found', handleMatchFound);
+    socket.on('timer-tick', handleTimerTick);
+    socket.on('match-locked', handleMatchLocked);
+    socket.on('match-finished', handleMatchFinished);
+    socket.on('opponent-left-match', handleOpponentLeft);
+    socket.on('you-left-match', handleYouLeft);
 
     return () => {
-      socket.off('match-found');
-      socket.off('timer-tick');
-      socket.off('match-locked');
-      socket.off('receive-message');
-      socket.off('score-update');
-      socket.off('evaluation-started');
-      socket.off('evaluation-result');
-      socket.off('match-finished');
-      socket.off('opponent-solved');
-      socket.off('player-disconnected');
-      socket.off('opponent-left-match');
-      socket.off('you-left-match');
-      socket.off('ai-feedback');
+      socket.off('match-found', handleMatchFound);
+      socket.off('timer-tick', handleTimerTick);
+      socket.off('match-locked', handleMatchLocked);
+      socket.off('match-finished', handleMatchFinished);
+      socket.off('opponent-left-match', handleOpponentLeft);
+      socket.off('you-left-match', handleYouLeft);
     };
-  }, [socket, roomId, matchType, teammates, myTeam]);
+    // Only re-run when socket itself changes — myTeam/matchType read via refs
+  }, [socket, roomId]);
+
+  // ---- EFFECT 2: Chat and misc listeners (can re-run when matchType/teammates change) ----
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleReceiveMessage = ({ user, socketId, message }) => {
+      const isMe = socketId === socket.id;
+      const isTeammate = matchTypeRef.current === '2v2' && teammatesRef.current.includes(socketId) && !isMe;
+      if (isTeammate && !teammateNames.find(t => t.socketId === socketId)) {
+        setTeammateNames(prev => [...prev, { socketId, username: user }]);
+      }
+      setChat(prev => [...prev, { user: isMe ? 'You' : user, message, type: 'user', isMe, isTeammate }]);
+    };
+
+    const handleScoreUpdate = ({ user, message }) => {
+      setChat(prev => [...prev, { user, message, type: 'system' }]);
+    };
+
+    const handleEvalStarted = ({ message }) => setOutput(message || 'Evaluating...');
+
+    const handleEvalResult = ({ ok, correct, details, message, isRun }) => {
+      setIsExecuting(false);
+      setExecutionIntent(null);
+      if (ok && correct) {
+        setOutput(isRun
+          ? `✅ Code runs correctly! (click Submit to finalize)\n${JSON.stringify(details, null, 2)}`
+          : `✅ Correct!\n${JSON.stringify(details, null, 2)}`);
+      } else if (ok) {
+        setOutput(`❌ Wrong Output\n${JSON.stringify(details, null, 2)}`);
+      } else {
+        setOutput(message || 'Evaluation failed. Please try again.');
+      }
+    };
+
+    const handleAiFeedback = ({ feedback }) => setAiFeedback(feedback);
+    const handleHintReceived = ({ hint }) => setAiFeedback(hint || 'No hint available.');
+    const handleOpponentSolved = () => setChat(prev => [...prev, { user: 'System', message: 'Opponent solved the problem!', type: 'system' }]);
+    const handlePlayerDisconnected = () => setChat(prev => [...prev, { user: 'System', message: 'Opponent disconnected', type: 'system' }]);
+
+    socket.on('receive-message', handleReceiveMessage);
+    socket.on('score-update', handleScoreUpdate);
+    socket.on('evaluation-started', handleEvalStarted);
+    socket.on('evaluation-result', handleEvalResult);
+    socket.on('ai-feedback', handleAiFeedback);
+    socket.on('hint-received', handleHintReceived);
+    socket.on('opponent-solved', handleOpponentSolved);
+    socket.on('player-disconnected', handlePlayerDisconnected);
+
+    return () => {
+      socket.off('receive-message', handleReceiveMessage);
+      socket.off('score-update', handleScoreUpdate);
+      socket.off('evaluation-started', handleEvalStarted);
+      socket.off('evaluation-result', handleEvalResult);
+      socket.off('ai-feedback', handleAiFeedback);
+      socket.off('hint-received', handleHintReceived);
+      socket.off('opponent-solved', handleOpponentSolved);
+      socket.off('player-disconnected', handlePlayerDisconnected);
+    };
+  }, [socket, teammateNames]);
 
   // Fallback: If question not received via socket within 3 seconds, fetch from API
   useEffect(() => {
